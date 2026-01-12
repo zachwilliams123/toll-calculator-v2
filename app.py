@@ -1,70 +1,64 @@
 """
-Battery Toll Structure Calculator
-Modo Energy - Educational Tool
+Battery Toll Calculator - Compact Version
+Modo Energy - For article embedding
 
-Deploy to Streamlit Cloud, then embed in articles via iframe:
-<iframe src="https://your-app.streamlit.app/?embed=true" width="100%" height="800" frameborder="0"></iframe>
+Focused on: inputs → key results → bankability map
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
-# Page config
+# Page config - compact
 st.set_page_config(
-    page_title="Battery Toll Calculator | Modo Energy",
+    page_title="Toll Calculator | Modo Energy",
     page_icon="⚡",
-    layout="wide",
+    layout="centered",
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for Modo branding
+# Clean CSS
 st.markdown("""
 <style>
-    /* Hide Streamlit branding for embed */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    #MainMenu, footer, header {visibility: hidden;}
+    .block-container {padding: 1rem 1rem 0rem 1rem; max-width: 700px;}
     
-    /* Modo colors */
-    .stApp {
-        background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
+    h1 {font-size: 1.3rem !important; margin-bottom: 0.5rem !important;}
+    
+    .stRadio > div {flex-direction: row; gap: 0.5rem;}
+    .stRadio > div > label {
+        background: #f1f5f9; padding: 0.4rem 0.8rem; border-radius: 6px;
+        font-size: 0.8rem; cursor: pointer;
+    }
+    .stRadio > div > label[data-checked="true"] {
+        background: #1e293b; color: white;
     }
     
-    .hero-card {
-        background: linear-gradient(135deg, #10b981, #14b8a6);
-        border-radius: 12px;
-        padding: 20px;
-        color: white;
-        margin-bottom: 20px;
+    .result-card {
+        border-radius: 10px; padding: 1rem; margin: 0.75rem 0;
+        display: flex; justify-content: space-between; align-items: center;
     }
+    .result-card.bankable {background: linear-gradient(135deg, #10b981, #14b8a6); color: white;}
+    .result-card.not-bankable {background: linear-gradient(135deg, #ef4444, #f97316); color: white;}
     
-    .hero-card.not-bankable {
-        background: linear-gradient(135deg, #ef4444, #f97316);
+    .metric-row {
+        display: flex; gap: 0.5rem; margin: 0.5rem 0;
     }
-    
     .metric-box {
-        background: #f8fafc;
-        border-radius: 8px;
-        padding: 12px;
-        text-align: center;
+        flex: 1; background: #f8fafc; border-radius: 6px; padding: 0.5rem;
+        text-align: center; font-size: 0.75rem;
     }
+    .metric-box .value {font-size: 1.1rem; font-weight: 600; color: #1e293b;}
+    .metric-box .label {color: #64748b; font-size: 0.65rem;}
     
-    .solving-badge {
-        background: #3b82f6;
-        color: white;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 11px;
-        font-weight: 600;
-    }
+    div[data-testid="stSlider"] {padding: 0;}
+    .stSlider p {font-size: 0.75rem !important; margin-bottom: 0.2rem !important;}
 </style>
 """, unsafe_allow_html=True)
 
-# Revenue data (German BESS forecasts)
-REVENUE_DATA = {
+# Revenue data
+REVENUE = {
     'P99': {2026: 159.1, 2027: 101.2, 2028: 83.3, 2029: 77.9, 2030: 72.9, 
             2031: 71.4, 2032: 70.0, 2033: 68.6, 2034: 67.2, 2035: 65.9},
     'P50': {2026: 256.0, 2027: 161.6, 2028: 129.4, 2029: 123.4, 2030: 116.4,
@@ -73,383 +67,183 @@ REVENUE_DATA = {
             2031: 146.2, 2032: 143.3, 2033: 140.4, 2034: 137.6, 2035: 134.9}
 }
 
-def calc_pmt(rate, nper, pv):
-    """Calculate flat amortising payment"""
-    if rate == 0 or nper == 0:
-        return pv / max(nper, 1)
-    r = rate / 100
-    return pv * (r * (1 + r)**nper) / ((1 + r)**nper - 1)
+# Fixed assumptions
+CAPEX, OPEX, TENOR = 600, 7, 10
+DSCR_TARGET, DEBT_RATE, DEG_RATE = 1.8, 5.25, 2.5
 
-def calc_irr(cash_flows, guess=0.1):
-    """Calculate IRR using Newton-Raphson"""
+def calc_irr(cfs, guess=0.1):
     irr = guess
     for _ in range(100):
-        npv = sum(cf / (1 + irr)**i for i, cf in enumerate(cash_flows))
-        dnpv = sum(-i * cf / (1 + irr)**(i+1) for i, cf in enumerate(cash_flows))
-        if abs(dnpv) < 0.0001:
-            break
+        npv = sum(cf / (1 + irr)**i for i, cf in enumerate(cfs))
+        dnpv = sum(-i * cf / (1 + irr)**(i+1) for i, cf in enumerate(cfs))
+        if abs(dnpv) < 0.0001: break
         new_irr = irr - npv / dnpv
-        if abs(new_irr - irr) < 0.0001:
-            return new_irr * 100
-        if new_irr < -0.99 or new_irr > 10:
-            return np.nan
+        if abs(new_irr - irr) < 0.0001: return new_irr * 100
+        if new_irr < -0.99 or new_irr > 10: return np.nan
         irr = new_irr
     return irr * 100
 
-def calculate_structure(capex, opex, gearing, toll_pct, toll_level, 
-                        dscr_target, debt_rate, tenor, sculpting, degradation_on, degradation_rate):
-    """Core financial model calculation"""
-    debt = capex * (gearing / 100)
-    equity = capex - debt
-    if equity <= 0 and gearing > 0:
-        return None
+def calculate(gearing, toll_pct, toll_level):
+    debt = CAPEX * gearing / 100
+    equity = CAPEX - debt
+    if equity <= 0: return None
     
-    toll_pct_dec = toll_pct / 100
-    rate = debt_rate / 100
+    rate = DEBT_RATE / 100
+    tp = toll_pct / 100
     
-    def get_cfads(scenario_revs, for_sculpting=False):
-        profile = []
-        for i in range(tenor):
-            year = 2026 + i
-            scenario_rev = scenario_revs.get(year, scenario_revs[2035])
-            deg_factor = (1 - degradation_rate/100)**i if degradation_on else 1
-            
-            toll_rev = toll_level * toll_pct_dec  # Fixed toll
-            merch_rev = scenario_rev * (1 - toll_pct_dec) * deg_factor
-            total_rev = toll_rev + merch_rev
-            cfads = total_rev - opex
-            profile.append({
-                'year': year, 'cfads': cfads, 'toll_rev': toll_rev,
-                'merch_rev': merch_rev, 'total_rev': total_rev, 'deg_factor': deg_factor
-            })
-        return profile
+    # Flat amortising
+    pmt = debt * (rate * (1+rate)**TENOR) / ((1+rate)**TENOR - 1) if debt > 0 else 0
     
-    # Debt schedule
-    p99_profile = get_cfads(REVENUE_DATA['P99'], True)
-    debt_schedule = []
-    remaining = debt
-    
-    if sculpting and debt > 0:
-        for i in range(tenor):
-            target_ds = p99_profile[i]['cfads'] / dscr_target
-            interest = remaining * rate
-            principal = min(max(0, target_ds - interest), remaining)
-            remaining = max(0, remaining - principal)
-            debt_schedule.append({'ds': interest + principal, 'interest': interest, 
-                                  'principal': principal, 'remaining': remaining})
-        if remaining > 0.01:
-            debt_schedule[-1]['ds'] += remaining
-            debt_schedule[-1]['principal'] += remaining
-    else:
-        flat_ds = calc_pmt(debt_rate, tenor, debt) if debt > 0 else 0
-        for i in range(tenor):
-            interest = remaining * rate
-            principal = flat_ds - interest
-            remaining = max(0, remaining - principal)
-            debt_schedule.append({'ds': flat_ds, 'interest': interest,
-                                  'principal': principal, 'remaining': remaining})
-    
-    avg_ds = sum(d['ds'] for d in debt_schedule) / tenor if debt > 0 else 0
-    
-    def calc_scenario(scenario_revs):
-        profile = get_cfads(scenario_revs)
-        total_distrib = 0
+    def scenario_irr(revs):
+        cfs = [-equity]
         min_dscr = 999
-        yearly = []
-        
-        for i in range(tenor):
-            p = profile[i]
-            ds = debt_schedule[i]['ds'] if debt_schedule else 0
-            dscr = p['cfads'] / ds if ds > 0 else 999
-            to_equity = max(0, p['cfads'] - ds)
+        for i in range(TENOR):
+            yr = 2026 + i
+            rev = revs.get(yr, revs[2035])
+            deg = (1 - DEG_RATE/100)**i
+            cfads = toll_level * tp + rev * (1-tp) * deg - OPEX
+            dscr = cfads / pmt if pmt > 0 else 999
             min_dscr = min(min_dscr, dscr)
-            total_distrib += to_equity
-            yearly.append({**p, 'ds': ds, 'dscr': dscr, 'to_equity': to_equity})
-        
-        equity_cfs = [-equity] + [y['to_equity'] for y in yearly]
-        levered_irr = calc_irr(equity_cfs) if equity > 0 else 0
-        return {'total_distrib': total_distrib, 'min_dscr': min_dscr, 
-                'levered_irr': levered_irr, 'yearly': yearly}
+            cfs.append(max(0, cfads - pmt))
+        return calc_irr(cfs), min_dscr
     
-    # Unlevered IRR
-    p50_profile = get_cfads(REVENUE_DATA['P50'])
-    unlev_cfs = [-capex] + [p['cfads'] for p in p50_profile]
-    unlevered_irr = calc_irr(unlev_cfs)
+    p99_irr, min_dscr = scenario_irr(REVENUE['P99'])
+    p50_irr, _ = scenario_irr(REVENUE['P50'])
+    p1_irr, _ = scenario_irr(REVENUE['P1'])
     
-    p99 = calc_scenario(REVENUE_DATA['P99'])
-    p50 = calc_scenario(REVENUE_DATA['P50'])
-    p1 = calc_scenario(REVENUE_DATA['P1'])
-    
-    variance = ((p50['levered_irr'] - p99['levered_irr']) / p50['levered_irr'] * 100) if p50['levered_irr'] > 0 else 0
-    bankable = p99['min_dscr'] >= dscr_target
-    
-    # Gap analysis
-    gap_data = []
-    for i in range(tenor):
-        year = 2026 + i
-        p50_rev = REVENUE_DATA['P50'].get(year, REVENUE_DATA['P50'][2035])
-        p99_rev = REVENUE_DATA['P99'].get(year, REVENUE_DATA['P99'][2035])
-        deg_factor = (1 - degradation_rate/100)**i if degradation_on else 1
-        
-        ceiling = p50_rev * 0.80
-        ds = debt_schedule[i]['ds'] if debt_schedule else avg_ds
-        required_cfads = ds * dscr_target
-        merch_at_p99 = p99_rev * (1 - toll_pct_dec) * deg_factor
-        required_toll = required_cfads + opex - merch_at_p99
-        floor = required_toll / toll_pct_dec if toll_pct_dec > 0 else 0
-        
-        gap_data.append({'year': year, 'ceiling': ceiling, 'floor': max(0, floor), 'actual': toll_level})
+    # Unlevered
+    unlev_cfs = [-CAPEX]
+    for i in range(TENOR):
+        yr = 2026 + i
+        rev = REVENUE['P50'].get(yr, REVENUE['P50'][2035])
+        deg = (1 - DEG_RATE/100)**i
+        unlev_cfs.append(toll_level * tp + rev * (1-tp) * deg - OPEX)
+    unlev_irr = calc_irr(unlev_cfs)
     
     return {
-        'debt': debt, 'equity': equity, 'avg_ds': avg_ds, 'debt_schedule': debt_schedule,
-        'unlevered_irr': unlevered_irr, 'p99': p99, 'p50': p50, 'p1': p1,
-        'variance': variance, 'bankable': bankable, 'min_dscr': p99['min_dscr'],
-        'gearing': gearing, 'toll_pct': toll_pct, 'toll_level': toll_level,
-        'gap_data': gap_data
+        'debt': debt, 'equity': equity, 'gearing': gearing,
+        'toll_pct': toll_pct, 'toll_level': toll_level,
+        'p99_irr': p99_irr, 'p50_irr': p50_irr, 'p1_irr': p1_irr,
+        'unlev_irr': unlev_irr, 'min_dscr': min_dscr,
+        'bankable': min_dscr >= DSCR_TARGET
     }
 
-def find_optimal_gearing(capex, opex, toll_pct, toll_level, dscr_target, debt_rate, tenor, sculpting, deg_on, deg_rate):
+def find_max_gearing(tp, tl):
     for g in range(85, -1, -1):
-        result = calculate_structure(capex, opex, g, toll_pct, toll_level, dscr_target, debt_rate, tenor, sculpting, deg_on, deg_rate)
-        if result and result['bankable']:
-            return result
-    return calculate_structure(capex, opex, 0, toll_pct, toll_level, dscr_target, debt_rate, tenor, sculpting, deg_on, deg_rate)
+        r = calculate(g, tp, tl)
+        if r and r['bankable']: return r
+    return calculate(0, tp, tl)
 
-def find_optimal_toll_pct(capex, opex, gearing, toll_level, dscr_target, debt_rate, tenor, sculpting, deg_on, deg_rate):
+def find_min_toll_pct(g, tl):
     for tp in range(0, 101):
-        result = calculate_structure(capex, opex, gearing, tp, toll_level, dscr_target, debt_rate, tenor, sculpting, deg_on, deg_rate)
-        if result and result['bankable']:
-            return result
-    return calculate_structure(capex, opex, gearing, 100, toll_level, dscr_target, debt_rate, tenor, sculpting, deg_on, deg_rate)
+        r = calculate(g, tp, tl)
+        if r and r['bankable']: return r
+    return calculate(g, 100, tl)
 
-def find_optimal_toll_level(capex, opex, gearing, toll_pct, dscr_target, debt_rate, tenor, sculpting, deg_on, deg_rate):
+def find_min_toll_level(g, tp):
     for tl in range(50, 201):
-        result = calculate_structure(capex, opex, gearing, toll_pct, tl, dscr_target, debt_rate, tenor, sculpting, deg_on, deg_rate)
-        if result and result['bankable']:
-            return result
-    return calculate_structure(capex, opex, gearing, toll_pct, 200, dscr_target, debt_rate, tenor, sculpting, deg_on, deg_rate)
+        r = calculate(g, tp, tl)
+        if r and r['bankable']: return r
+    return calculate(g, tp, 200)
 
-# ============== MAIN APP ==============
+# ===== UI =====
 
-# Title
-st.markdown("## ⚡ Battery Toll Structure Calculator")
-st.caption("German BESS forecasts • Educational tool for developers, offtakers, investors & banks")
+st.markdown("#### ⚡ Battery Toll Calculator")
 
-# Mode selector
+# Mode as pills
 mode = st.radio(
-    "Mode",
-    ["Calculator", "Max Gearing", "Min Toll %", "Min Toll €"],
-    horizontal=True,
-    help="Calculator: set all values manually. Others: optimise for that variable."
+    "mode", ["Manual", "Max Gearing", "Min Toll %", "Min Toll €"],
+    horizontal=True, label_visibility="collapsed"
 )
 
-# Inputs in columns
-col1, col2, col3 = st.columns([1, 1, 1])
+# Compact inputs
+c1, c2, c3 = st.columns(3)
+with c1:
+    gearing = st.slider("Gearing %", 0, 85, 55, disabled=(mode=="Max Gearing"))
+with c2:
+    toll_pct = st.slider("Toll Coverage %", 0, 100, 75, disabled=(mode=="Min Toll %"))
+with c3:
+    toll_level = st.slider("Toll €k/MW/yr", 50, 200, 95, disabled=(mode=="Min Toll €"))
 
-with col1:
-    st.markdown("**Project**")
-    capex = st.number_input("CapEx (€k/MW)", value=600, min_value=300, max_value=1000, step=25)
-    opex = st.number_input("Opex (€k/yr)", value=7, min_value=3, max_value=20)
-
-with col2:
-    st.markdown("**Structure**")
-    if mode == "Max Gearing":
-        st.info("🔍 Solving for max gearing...")
-        gearing = None
-    else:
-        gearing = st.slider("Gearing (%)", 0, 85, 55)
-    
-    if mode == "Min Toll %":
-        st.info("🔍 Solving for min toll %...")
-        toll_pct = None
-    else:
-        toll_pct = st.slider("Toll Coverage (%)", 0, 100, 75)
-
-with col3:
-    st.markdown("**Toll**")
-    if mode == "Min Toll €":
-        st.info("🔍 Solving for min toll €...")
-        toll_level = None
-    else:
-        toll_level = st.slider("Toll Level (€k/MW/yr)", 50, 200, 95)
-        toll_pct_p50 = (toll_level / REVENUE_DATA['P50'][2026]) * 100
-        st.caption(f"= {toll_pct_p50:.0f}% of Year 1 P50")
-
-# Advanced settings in expander
-with st.expander("⚙️ Financing Assumptions"):
-    adv1, adv2, adv3 = st.columns(3)
-    with adv1:
-        dscr_target = st.number_input("Target DSCR", value=1.8, min_value=1.0, max_value=3.0, step=0.1)
-        sculpting = st.checkbox("Sculpted debt service", value=False)
-    with adv2:
-        base_rate = 3.5
-        spread = st.number_input("Credit spread (bps)", value=175, min_value=100, max_value=350, step=25)
-        debt_rate = base_rate + spread/100
-        st.caption(f"All-in rate: {debt_rate:.2f}%")
-    with adv3:
-        tenor = st.number_input("Debt tenor (years)", value=10, min_value=5, max_value=15)
-        degradation_on = st.checkbox("Capacity degradation", value=True)
-        if degradation_on:
-            degradation_rate = st.number_input("Degradation (%/yr)", value=2.5, min_value=1.0, max_value=5.0, step=0.5)
-        else:
-            degradation_rate = 0
-
-# Calculate results
-if mode == "Calculator":
-    results = calculate_structure(capex, opex, gearing, toll_pct, toll_level, 
-                                  dscr_target, debt_rate, tenor, sculpting, degradation_on, degradation_rate)
+# Calculate
+if mode == "Manual":
+    r = calculate(gearing, toll_pct, toll_level)
 elif mode == "Max Gearing":
-    results = find_optimal_gearing(capex, opex, toll_pct, toll_level, 
-                                   dscr_target, debt_rate, tenor, sculpting, degradation_on, degradation_rate)
+    r = find_max_gearing(toll_pct, toll_level)
 elif mode == "Min Toll %":
-    results = find_optimal_toll_pct(capex, opex, gearing, toll_level,
-                                    dscr_target, debt_rate, tenor, sculpting, degradation_on, degradation_rate)
-else:  # Min Toll €
-    results = find_optimal_toll_level(capex, opex, gearing, toll_pct,
-                                      dscr_target, debt_rate, tenor, sculpting, degradation_on, degradation_rate)
+    r = find_min_toll_pct(gearing, toll_level)
+else:
+    r = find_min_toll_level(gearing, toll_pct)
 
-if results is None:
-    st.error("Invalid structure - equity cannot be zero or negative")
+if not r:
+    st.error("Invalid inputs")
     st.stop()
 
-# Hero result card
-hero_class = "hero-card" if results['bankable'] else "hero-card not-bankable"
-status = "✓ Bankable" if results['bankable'] else "✗ Not Bankable"
+# Result card
+status = "✓ Bankable" if r['bankable'] else "✗ Not Bankable"
+card_class = "bankable" if r['bankable'] else "not-bankable"
 
 st.markdown(f"""
-<div class="{hero_class}">
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
-        <div>
-            <div style="font-size: 24px; font-weight: bold;">{status} at {results['gearing']:.0f}% gearing</div>
-            <div style="opacity: 0.9;">{results['toll_pct']:.0f}% toll @ €{results['toll_level']:.0f}k/MW/yr • Min DSCR: {results['min_dscr']:.2f}x</div>
-        </div>
-        <div style="text-align: right;">
-            <div style="font-size: 12px; opacity: 0.8;">P50 Equity IRR</div>
-            <div style="font-size: 36px; font-weight: bold;">{results['p50']['levered_irr']:.1f}%</div>
-        </div>
+<div class="result-card {card_class}">
+    <div>
+        <div style="font-size: 1.1rem; font-weight: 600;">{status} at {r['gearing']:.0f}% gearing</div>
+        <div style="font-size: 0.75rem; opacity: 0.9;">{r['toll_pct']:.0f}% toll @ €{r['toll_level']:.0f}k • DSCR: {r['min_dscr']:.2f}x</div>
+    </div>
+    <div style="text-align: right;">
+        <div style="font-size: 0.65rem; opacity: 0.8;">P50 Equity IRR</div>
+        <div style="font-size: 1.8rem; font-weight: 700;">{r['p50_irr']:.1f}%</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 # Metrics row
-m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("Debt", f"€{results['debt']:.0f}k")
-m2.metric("Equity", f"€{results['equity']:.0f}k")
-m3.metric("Unlevered IRR", f"{results['unlevered_irr']:.1f}%")
-m4.metric("P99 IRR", f"{results['p99']['levered_irr']:.1f}%")
-m5.metric("P1 IRR", f"{results['p1']['levered_irr']:.1f}%")
+st.markdown(f"""
+<div class="metric-row">
+    <div class="metric-box"><div class="value">€{r['equity']:.0f}k</div><div class="label">Equity</div></div>
+    <div class="metric-box"><div class="value">{r['unlev_irr']:.1f}%</div><div class="label">Unlev IRR</div></div>
+    <div class="metric-box"><div class="value">{r['p99_irr']:.1f}%</div><div class="label">P99 IRR</div></div>
+    <div class="metric-box"><div class="value">{r['p1_irr']:.1f}%</div><div class="label">P1 IRR</div></div>
+</div>
+""", unsafe_allow_html=True)
 
-# Charts
-st.markdown("---")
-chart1, chart2 = st.columns(2)
+# Bankability map - compact
+st.markdown("<p style='font-size: 0.75rem; color: #64748b; margin: 0.75rem 0 0.25rem 0;'>Bankability Map (at €{:.0f}k toll)</p>".format(r['toll_level']), unsafe_allow_html=True)
 
-with chart1:
-    st.markdown("**Toll Pricing Analysis**")
-    st.caption("Ceiling (80% P50) vs Floor (DSCR requirement) vs Your Toll")
-    
-    gap_df = pd.DataFrame(results['gap_data'])
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=gap_df['year'], y=gap_df['ceiling'], name='Ceiling (80% P50)',
-                             fill='tozeroy', fillcolor='rgba(134, 239, 172, 0.2)',
-                             line=dict(color='#22c55e', width=2)))
-    fig.add_trace(go.Scatter(x=gap_df['year'], y=gap_df['floor'], name='Floor (DSCR req)',
-                             fill='tozeroy', fillcolor='rgba(252, 165, 165, 0.2)',
-                             line=dict(color='#ef4444', width=2)))
-    fig.add_trace(go.Scatter(x=gap_df['year'], y=gap_df['actual'], name='Your Toll',
-                             line=dict(color='#3b82f6', width=2, dash='dash'),
-                             mode='lines+markers'))
-    
-    fig.update_layout(
-        height=300, margin=dict(l=0, r=0, t=10, b=0),
-        legend=dict(orientation='h', yanchor='bottom', y=1.02),
-        yaxis_title='€k/MW/yr',
-        hovermode='x unified'
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-with chart2:
-    st.markdown("**DSCR Profile (P99 Stress)**")
-    st.caption("Debt service coverage ratio over loan term")
-    
-    dscr_data = [{'year': y['year'], 'dscr': y['dscr']} for y in results['p99']['yearly']]
-    dscr_df = pd.DataFrame(dscr_data)
-    
-    fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(x=dscr_df['year'], y=dscr_df['dscr'],
-                              mode='lines+markers', name='DSCR',
-                              line=dict(color='#3b82f6', width=2),
-                              marker=dict(size=8)))
-    fig2.add_hline(y=dscr_target, line_dash="dash", line_color="#ef4444",
-                   annotation_text=f"Target: {dscr_target}x")
-    
-    fig2.update_layout(
-        height=300, margin=dict(l=0, r=0, t=10, b=0),
-        yaxis_title='DSCR (x)',
-        hovermode='x unified'
-    )
-    st.plotly_chart(fig2, use_container_width=True)
-
-# Bankability map
-st.markdown("**Bankability Map**")
-st.caption(f"At €{results['toll_level']:.0f}k toll level - green = bankable, red = not bankable")
-
-# Generate map data
-map_data = []
+pts = []
 for g in range(10, 86, 5):
     for tp in range(0, 101, 10):
-        calc = calculate_structure(capex, opex, g, tp, results['toll_level'],
-                                   dscr_target, debt_rate, tenor, sculpting, degradation_on, degradation_rate)
-        if calc:
-            map_data.append({
-                'gearing': g, 'toll_pct': tp,
-                'bankable': calc['bankable'],
-                'irr': calc['p50']['levered_irr'],
-                'dscr': calc['min_dscr']
-            })
+        c = calculate(g, tp, r['toll_level'])
+        if c: pts.append({'g': g, 'tp': tp, 'ok': c['bankable'], 'irr': c['p50_irr']})
 
-map_df = pd.DataFrame(map_data)
-bankable_df = map_df[map_df['bankable']]
-not_bankable_df = map_df[~map_df['bankable']]
+df = pd.DataFrame(pts)
 
-fig3 = go.Figure()
+fig = go.Figure()
 
-if len(not_bankable_df) > 0:
-    fig3.add_trace(go.Scatter(
-        x=not_bankable_df['toll_pct'], y=not_bankable_df['gearing'],
-        mode='markers', name='Not Bankable',
-        marker=dict(color='#fca5a5', size=12),
-        hovertemplate='%{y}% gearing, %{x}% toll<br>DSCR: %{customdata:.2f}x<extra></extra>',
-        customdata=not_bankable_df['dscr']
-    ))
+# Not bankable
+nb = df[~df['ok']]
+if len(nb): 
+    fig.add_trace(go.Scatter(x=nb['tp'], y=nb['g'], mode='markers', name='Not bankable',
+        marker=dict(color='#fca5a5', size=10), hoverinfo='skip'))
 
-if len(bankable_df) > 0:
-    fig3.add_trace(go.Scatter(
-        x=bankable_df['toll_pct'], y=bankable_df['gearing'],
-        mode='markers', name='Bankable',
-        marker=dict(color='#86efac', size=12),
-        hovertemplate='%{y}% gearing, %{x}% toll<br>IRR: %{customdata:.1f}%<extra></extra>',
-        customdata=bankable_df['irr']
-    ))
+# Bankable
+bk = df[df['ok']]
+if len(bk):
+    fig.add_trace(go.Scatter(x=bk['tp'], y=bk['g'], mode='markers', name='Bankable',
+        marker=dict(color='#86efac', size=10), hoverinfo='skip'))
 
-# Current position
-fig3.add_trace(go.Scatter(
-    x=[results['toll_pct']], y=[results['gearing']],
-    mode='markers', name='Current',
-    marker=dict(color='#2563eb', size=16, symbol='star')
-))
+# Current
+fig.add_trace(go.Scatter(x=[r['toll_pct']], y=[r['gearing']], mode='markers', name='You',
+    marker=dict(color='#1e40af', size=14, symbol='star')))
 
-fig3.update_layout(
-    height=350, margin=dict(l=0, r=0, t=10, b=0),
-    xaxis_title='Toll Coverage (%)',
-    yaxis_title='Gearing (%)',
-    legend=dict(orientation='h', yanchor='bottom', y=1.02),
-    xaxis=dict(range=[0, 105]),
-    yaxis=dict(range=[0, 90])
+fig.update_layout(
+    height=220, margin=dict(l=40, r=10, t=10, b=40),
+    xaxis=dict(title='Toll Coverage %', range=[-5, 105], title_font_size=10, tickfont_size=9),
+    yaxis=dict(title='Gearing %', range=[0, 90], title_font_size=10, tickfont_size=9),
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, font_size=9),
+    showlegend=True
 )
-st.plotly_chart(fig3, use_container_width=True)
+
+st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 # Footer
-st.markdown("---")
-st.caption("**Modo Energy** • German BESS Forecasts 2026-2035 • Educational purposes only • Not financial advice")
-st.caption("Questions? Contact zach.williams@modoenergy.com")
+st.markdown("<p style='font-size: 0.6rem; color: #94a3b8; text-align: center; margin-top: 0;'>Modo Energy • German BESS forecasts • Educational only</p>", unsafe_allow_html=True)
