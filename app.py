@@ -1,12 +1,11 @@
 """
-Battery Toll Calculator v2.1
+Battery Toll Calculator v2.2
 Modo Energy - German BESS Educational Tool
 
 Fixes:
-- Plotly titlefont deprecation (now uses title_font)
-- Performance optimization with caching
-- Improved bankability map visualization
-- Polished UI/UX
+- HTML rendering (quote conflicts resolved)
+- Restored segmented button style
+- Performance with caching
 """
 
 import streamlit as st
@@ -16,7 +15,7 @@ import numpy_financial as npf
 import plotly.graph_objects as go
 
 # ============================================================================
-# PAGE CONFIG - Must be first Streamlit command
+# PAGE CONFIG
 # ============================================================================
 st.set_page_config(
     page_title="Battery Toll Calculator | Modo Energy",
@@ -25,23 +24,19 @@ st.set_page_config(
 )
 
 # ============================================================================
-# CUSTOM CSS - Modo Energy Brand Styling
+# CUSTOM CSS
 # ============================================================================
 st.markdown("""
 <style>
-    /* Import DM Sans */
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
     
-    /* Global font */
     html, body, [class*="css"], .stMarkdown, p, div, span, label {
         font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }
     
-    /* Hide Streamlit chrome */
     #MainMenu, footer, header {visibility: hidden;}
     .block-container {padding: 1.25rem 2rem 2rem 2rem; max-width: 1150px;}
     
-    /* Title area */
     .main-title {
         font-size: 1.6rem;
         font-weight: 700;
@@ -60,17 +55,22 @@ st.markdown("""
         font-weight: 600;
     }
     
-    /* Mode selector - pill style */
-    .mode-container {
-        display: inline-flex;
-        background: #f1f5f9;
-        border-radius: 10px;
-        padding: 4px;
-        gap: 4px;
-        margin-bottom: 1rem;
+    /* Segmented button styling */
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div > div > div > div[data-testid="stButton"] > button {
+        width: 100%;
+        border: 1px solid #e2e8f0;
+        background: white;
+        color: #64748b;
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        transition: all 0.15s;
+    }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div > div > div > div[data-testid="stButton"] > button:hover {
+        border-color: #cbd5e1;
+        background: #f8fafc;
     }
     
-    /* Section cards */
     .section-card {
         background: #ffffff;
         border-radius: 12px;
@@ -87,16 +87,19 @@ st.markdown("""
         border-bottom: 1px solid #f1f5f9;
     }
     
-    /* Hero card - bankable */
-    .hero-card {
+    .hero-bankable {
         background: linear-gradient(135deg, #10b981 0%, #0d9488 100%);
         border-radius: 12px;
         padding: 1.1rem 1.25rem;
         color: white;
         margin-bottom: 0.85rem;
     }
-    .hero-card.not-bankable {
+    .hero-not-bankable {
         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        border-radius: 12px;
+        padding: 1.1rem 1.25rem;
+        color: white;
+        margin-bottom: 0.85rem;
     }
     .hero-status {
         font-size: 1.15rem;
@@ -119,7 +122,6 @@ st.markdown("""
         line-height: 1.1;
     }
     
-    /* Metric boxes */
     .metrics-row {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
@@ -147,7 +149,6 @@ st.markdown("""
         margin-top: 0.15rem;
     }
     
-    /* Financing summary */
     .fin-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -169,7 +170,6 @@ st.markdown("""
         color: #1e293b;
     }
     
-    /* IRR scenario rows */
     .irr-title {
         font-size: 0.8rem;
         font-weight: 600;
@@ -177,33 +177,64 @@ st.markdown("""
         margin-bottom: 0.5rem;
         margin-top: 0.85rem;
     }
-    .irr-row {
+    .irr-row-p99 {
         display: flex;
         justify-content: space-between;
         align-items: center;
         padding: 0.6rem 0.85rem;
         border-radius: 8px;
         margin-bottom: 0.35rem;
+        background: #fef2f2;
     }
-    .irr-row.p99 { background: #fef2f2; }
-    .irr-row.p50 { background: #ecfdf5; }
-    .irr-row.p1 { background: #f0fdf4; }
-    .irr-label {
+    .irr-row-p50 {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.6rem 0.85rem;
+        border-radius: 8px;
+        margin-bottom: 0.35rem;
+        background: #ecfdf5;
+    }
+    .irr-row-p1 {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.6rem 0.85rem;
+        border-radius: 8px;
+        margin-bottom: 0.35rem;
+        background: #f0fdf4;
+    }
+    .irr-label-p99 {
         font-size: 0.8rem;
         font-weight: 500;
+        color: #dc2626;
     }
-    .irr-label.p99 { color: #dc2626; }
-    .irr-label.p50 { color: #059669; }
-    .irr-label.p1 { color: #16a34a; }
-    .irr-value {
+    .irr-label-p50 {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #059669;
+    }
+    .irr-label-p1 {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #16a34a;
+    }
+    .irr-value-p99 {
         font-size: 1rem;
         font-weight: 700;
+        color: #dc2626;
     }
-    .irr-value.p99 { color: #dc2626; }
-    .irr-value.p50 { color: #059669; }
-    .irr-value.p1 { color: #16a34a; }
+    .irr-value-p50 {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #059669;
+    }
+    .irr-value-p1 {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #16a34a;
+    }
     
-    /* Leverage box */
     .leverage-box {
         background: #fefce8;
         border-radius: 8px;
@@ -221,7 +252,6 @@ st.markdown("""
         color: #854d0e;
     }
     
-    /* Solving badge */
     .solving-box {
         background: #eff6ff;
         border: 2px solid #3b82f6;
@@ -247,7 +277,6 @@ st.markdown("""
         letter-spacing: 0.04em;
     }
     
-    /* Slider styling */
     div[data-testid="stSlider"] {
         padding-top: 0 !important;
         padding-bottom: 0.5rem !important;
@@ -257,8 +286,6 @@ st.markdown("""
         color: #475569 !important;
         margin-bottom: 0.15rem !important;
     }
-    
-    /* Number input */
     div[data-testid="stNumberInput"] label p {
         font-size: 0.8rem !important;
         color: #475569 !important;
@@ -266,20 +293,15 @@ st.markdown("""
     div[data-testid="stNumberInput"] input {
         font-size: 0.9rem !important;
     }
-    
-    /* Checkbox */
     div[data-testid="stCheckbox"] label p {
         font-size: 0.8rem !important;
         color: #475569 !important;
     }
-    
-    /* Expander */
     div[data-testid="stExpander"] summary p {
         font-size: 0.85rem !important;
         font-weight: 500 !important;
     }
     
-    /* Footer */
     .footer {
         text-align: center;
         font-size: 0.7rem;
@@ -289,15 +311,21 @@ st.markdown("""
         border-top: 1px solid #f1f5f9;
     }
     
-    /* Reduce spacing globally */
     .stVerticalBlock > div {
         gap: 0.5rem !important;
+    }
+    
+    /* Active button state */
+    .active-mode {
+        background: #1e293b !important;
+        color: white !important;
+        border-color: #1e293b !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA - German BESS Revenue Forecasts (€k/MW/yr)
+# DATA
 # ============================================================================
 REVENUE_DATA = {
     'year': list(range(2026, 2036)),
@@ -307,26 +335,21 @@ REVENUE_DATA = {
 }
 
 # ============================================================================
-# FINANCIAL MODEL - Cached for performance
+# FINANCIAL MODEL
 # ============================================================================
 @st.cache_data
 def calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_target, debt_rate, tenor, sculpted, deg_on, deg_rate):
-    """Calculate project financials with caching for performance."""
     years = REVENUE_DATA['year']
     n_years = len(years)
     
-    # Degradation factor
     deg_factors = [(1 - deg_rate) ** i if deg_on else 1.0 for i in range(n_years)]
     
-    # Apply degradation to revenues
     p10_rev = [REVENUE_DATA['p10'][i] * deg_factors[i] for i in range(n_years)]
     p50_rev = [REVENUE_DATA['p50'][i] * deg_factors[i] for i in range(n_years)]
     p90_rev = [REVENUE_DATA['p90'][i] * deg_factors[i] for i in range(n_years)]
     
-    # Toll vs merchant split
     toll_frac = toll_pct / 100
     
-    # Total revenues (toll portion is fixed, merchant portion varies)
     def calc_total_rev(merchant_rev):
         return [toll_level * toll_frac + merchant_rev[i] * (1 - toll_frac) for i in range(n_years)]
     
@@ -334,14 +357,11 @@ def calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_target, d
     total_p50 = calc_total_rev(p50_rev)
     total_p90 = calc_total_rev(p90_rev)
     
-    # Financing
-    total_capex = capex * 1000  # €k/MW to €/MW
+    total_capex = capex * 1000
     debt = total_capex * (gearing / 100)
     equity = total_capex - debt
     
-    # Debt service calculation
     if sculpted:
-        # Sculpted: debt service profiled to maintain constant DSCR against declining P50
         net_cf_p50 = [total_p50[i] * 1000 - opex * 1000 for i in range(n_years)]
         total_debt_capacity = sum([cf / dscr_target for cf in net_cf_p50[:tenor]])
         
@@ -351,7 +371,6 @@ def calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_target, d
         scale = min(1.0, debt / total_debt_capacity)
         debt_service = [(net_cf_p50[i] / dscr_target) * scale if i < tenor else 0 for i in range(n_years)]
     else:
-        # Flat amortization
         if tenor <= 0:
             return None
         annual_rate = debt_rate / 100
@@ -361,16 +380,13 @@ def calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_target, d
             pmt = debt / tenor
         debt_service = [pmt if i < tenor else 0 for i in range(n_years)]
     
-    # Calculate cashflows and metrics for each scenario
     def calc_scenario(total_rev):
         net_cf = [(total_rev[i] * 1000 - opex * 1000) for i in range(n_years)]
         equity_cf = [net_cf[i] - debt_service[i] for i in range(n_years)]
         
-        # DSCR by year
         dscr = [net_cf[i] / debt_service[i] if debt_service[i] > 0 else 99 for i in range(n_years)]
         min_dscr = min([d for d in dscr if d < 99]) if any(d < 99 for d in dscr) else 99
         
-        # IRR calculation
         equity_cf_with_invest = [-equity] + equity_cf
         irr = npf.irr(equity_cf_with_invest) * 100 if equity > 0 else 0
         
@@ -386,11 +402,9 @@ def calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_target, d
     p50_result = calc_scenario(total_p50)
     p90_result = calc_scenario(total_p90)
     
-    # Unlevered IRR (P50, no debt)
     unlev_cf = [-total_capex] + [(total_p50[i] * 1000 - opex * 1000) for i in range(n_years)]
     unlev_irr = npf.irr(unlev_cf) * 100
     
-    # Bankability check
     bankable = p10_result['min_dscr'] >= dscr_target
     
     return {
@@ -411,7 +425,6 @@ def calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_target, d
 
 @st.cache_data
 def find_max_gearing(capex, opex, toll_pct, toll_level, dscr_target, debt_rate, tenor, sculpted, deg_on, deg_rate):
-    """Binary search for maximum bankable gearing."""
     lo, hi = 0, 85
     best = 0
     for _ in range(20):
@@ -426,7 +439,6 @@ def find_max_gearing(capex, opex, toll_pct, toll_level, dscr_target, debt_rate, 
 
 @st.cache_data
 def find_min_toll_pct(capex, opex, gearing, toll_level, dscr_target, debt_rate, tenor, sculpted, deg_on, deg_rate):
-    """Binary search for minimum toll percentage."""
     lo, hi = 0, 100
     best = 100
     for _ in range(20):
@@ -441,7 +453,6 @@ def find_min_toll_pct(capex, opex, gearing, toll_level, dscr_target, debt_rate, 
 
 @st.cache_data
 def find_min_toll_level(capex, opex, gearing, toll_pct, dscr_target, debt_rate, tenor, sculpted, deg_on, deg_rate):
-    """Binary search for minimum toll level (€k/MW/yr)."""
     lo, hi = 50, 200
     best = 200
     for _ in range(20):
@@ -456,7 +467,6 @@ def find_min_toll_level(capex, opex, gearing, toll_pct, dscr_target, debt_rate, 
 
 @st.cache_data
 def generate_bankability_map(capex, opex, toll_level, dscr_target, debt_rate, tenor, sculpted, deg_on, deg_rate):
-    """Generate bankability map data points."""
     points = []
     for g in range(10, 86, 5):
         for tp in range(0, 101, 10):
@@ -482,17 +492,31 @@ with header_cols[1]:
     st.markdown("<div class='brand-text'>Modo Energy</div>", unsafe_allow_html=True)
 
 # ============================================================================
-# MODE SELECTOR - Using native Streamlit for better performance
+# MODE SELECTOR - Segmented buttons using session state
 # ============================================================================
-mode = st.radio(
-    "Select mode",
-    options=["Manual", "Max Gearing", "Min Toll %", "Min Toll €"],
-    horizontal=True,
-    label_visibility="collapsed"
-)
+if 'mode' not in st.session_state:
+    st.session_state.mode = "Manual"
+
+btn_cols = st.columns(4)
+with btn_cols[0]:
+    if st.button("Manual", use_container_width=True, type="primary" if st.session_state.mode == "Manual" else "secondary"):
+        st.session_state.mode = "Manual"
+with btn_cols[1]:
+    if st.button("Max Gearing", use_container_width=True, type="primary" if st.session_state.mode == "Max Gearing" else "secondary"):
+        st.session_state.mode = "Max Gearing"
+with btn_cols[2]:
+    if st.button("Min Toll %", use_container_width=True, type="primary" if st.session_state.mode == "Min Toll %" else "secondary"):
+        st.session_state.mode = "Min Toll %"
+with btn_cols[3]:
+    if st.button("Min Toll €", use_container_width=True, type="primary" if st.session_state.mode == "Min Toll €" else "secondary"):
+        st.session_state.mode = "Min Toll €"
+
+mode = st.session_state.mode
+
+st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
 
 # ============================================================================
-# MAIN LAYOUT - Two columns
+# MAIN LAYOUT
 # ============================================================================
 left_col, right_col = st.columns([1, 1.15], gap="medium")
 
@@ -512,45 +536,27 @@ with left_col:
     # Structure section
     st.markdown("<div class='section-card'><div class='section-title'>Structure</div>", unsafe_allow_html=True)
     
-    # Default financing assumptions
     dscr_target = 1.80
     debt_rate = 6.5
     tenor = 10
     
-    # Mode-specific logic
     if mode == "Max Gearing":
-        st.markdown("""
-            <div class='solving-box'>
-                <span class='solving-label'>Gearing %</span>
-                <span class='solving-badge'>→ SOLVING</span>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown("<div class='solving-box'><span class='solving-label'>Gearing %</span><span class='solving-badge'>→ SOLVING</span></div>", unsafe_allow_html=True)
         toll_pct = st.slider("Toll Coverage %", 0, 100, 65)
         toll_level = st.slider("Toll Level (€k/MW/yr)", 50, 150, 95)
     elif mode == "Min Toll %":
         gearing = st.slider("Gearing %", 10, 85, 45)
-        st.markdown("""
-            <div class='solving-box'>
-                <span class='solving-label'>Toll Coverage %</span>
-                <span class='solving-badge'>→ SOLVING</span>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown("<div class='solving-box'><span class='solving-label'>Toll Coverage %</span><span class='solving-badge'>→ SOLVING</span></div>", unsafe_allow_html=True)
         toll_level = st.slider("Toll Level (€k/MW/yr)", 50, 150, 95)
     elif mode == "Min Toll €":
         gearing = st.slider("Gearing %", 10, 85, 45)
         toll_pct = st.slider("Toll Coverage %", 0, 100, 65)
-        st.markdown("""
-            <div class='solving-box'>
-                <span class='solving-label'>Toll Level (€k/MW/yr)</span>
-                <span class='solving-badge'>→ SOLVING</span>
-            </div>
-        """, unsafe_allow_html=True)
-    else:  # Manual
+        st.markdown("<div class='solving-box'><span class='solving-label'>Toll Level (€k/MW/yr)</span><span class='solving-badge'>→ SOLVING</span></div>", unsafe_allow_html=True)
+    else:
         gearing = st.slider("Gearing %", 10, 85, 45)
         toll_pct = st.slider("Toll Coverage %", 0, 100, 65)
         toll_level = st.slider("Toll Level (€k/MW/yr)", 50, 150, 95)
     
-    # Show toll as % of Year 1 P50
     if mode != "Min Toll €":
         year1_p50 = REVENUE_DATA['p50'][0]
         toll_pct_of_p50 = (toll_level / year1_p50) * 100
@@ -565,7 +571,7 @@ with left_col:
     deg_rate = 0.025
     st.markdown("</div>", unsafe_allow_html=True)
     
-    # Financing assumptions (collapsible)
+    # Financing assumptions
     with st.expander("Financing assumptions"):
         fin_cols = st.columns(3)
         with fin_cols[0]:
@@ -576,7 +582,7 @@ with left_col:
             tenor = st.number_input("Tenor (yrs)", min_value=5, max_value=15, value=10, step=1)
 
 # ============================================================================
-# SOLVE FOR OPTIMIZED VALUES
+# SOLVE
 # ============================================================================
 if mode == "Max Gearing":
     gearing = find_max_gearing(capex, opex, toll_pct, toll_level, dscr_target, debt_rate, tenor, sculpted, deg_on, deg_rate)
@@ -585,7 +591,6 @@ elif mode == "Min Toll %":
 elif mode == "Min Toll €":
     toll_level = find_min_toll_level(capex, opex, gearing, toll_pct, dscr_target, debt_rate, tenor, sculpted, deg_on, deg_rate)
 
-# Calculate final result
 result = calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_target, debt_rate, tenor, sculpted, deg_on, deg_rate)
 
 # ============================================================================
@@ -594,102 +599,121 @@ result = calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_targ
 with right_col:
     if result:
         # Hero card
-        bankable_class = "" if result['bankable'] else "not-bankable"
-        status_text = f"✓ Bankable at {gearing:.0f}% gearing" if result['bankable'] else f"✗ Not bankable at {gearing:.0f}% gearing"
-        detail_text = f"{toll_pct:.0f}% toll @ €{toll_level:.0f}k · DSCR: {result['min_dscr']:.2f}x"
+        hero_class = "hero-bankable" if result['bankable'] else "hero-not-bankable"
+        status_icon = "✓" if result['bankable'] else "✗"
+        status_word = "Bankable" if result['bankable'] else "Not bankable"
         
-        st.markdown(f"""
-        <div class='hero-card {bankable_class}'>
-            <div style='display: flex; justify-content: space-between; align-items: center;'>
+        hero_html = f"""
+        <div class="{hero_class}">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <div class='hero-status'>{status_text}</div>
-                    <div class='hero-detail'>{detail_text}</div>
+                    <div class="hero-status">{status_icon} {status_word} at {gearing:.0f}% gearing</div>
+                    <div class="hero-detail">{toll_pct:.0f}% toll @ €{toll_level:.0f}k · DSCR: {result['min_dscr']:.2f}x</div>
                 </div>
                 <div>
-                    <div class='hero-irr-label'>P50 Equity IRR</div>
-                    <div class='hero-irr-value'>{result['p50']['irr']:.1f}%</div>
+                    <div class="hero-irr-label">P50 Equity IRR</div>
+                    <div class="hero-irr-value">{result['p50']['irr']:.1f}%</div>
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        st.markdown(hero_html, unsafe_allow_html=True)
         
         # Metrics row
-        st.markdown(f"""
-        <div class='metrics-row'>
-            <div class='metric-box'>
-                <div class='metric-value'>€{result['equity']:.0f}k</div>
-                <div class='metric-label'>Equity</div>
+        metrics_html = f"""
+        <div class="metrics-row">
+            <div class="metric-box">
+                <div class="metric-value">€{result['equity']:.0f}k</div>
+                <div class="metric-label">Equity</div>
             </div>
-            <div class='metric-box'>
-                <div class='metric-value'>{result['unlev_irr']:.1f}%</div>
-                <div class='metric-label'>Unlev IRR</div>
+            <div class="metric-box">
+                <div class="metric-value">{result['unlev_irr']:.1f}%</div>
+                <div class="metric-label">Unlev IRR</div>
             </div>
-            <div class='metric-box'>
-                <div class='metric-value'>{result['p99']['irr']:.1f}%</div>
-                <div class='metric-label'>P99 IRR</div>
+            <div class="metric-box">
+                <div class="metric-value">{result['p99']['irr']:.1f}%</div>
+                <div class="metric-label">P99 IRR</div>
             </div>
-            <div class='metric-box'>
-                <div class='metric-value'>{result['p1']['irr']:.1f}%</div>
-                <div class='metric-label'>P1 IRR</div>
+            <div class="metric-box">
+                <div class="metric-value">{result['p1']['irr']:.1f}%</div>
+                <div class="metric-label">P1 IRR</div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        st.markdown(metrics_html, unsafe_allow_html=True)
         
-        # Financing Summary
-        st.markdown(f"""
-        <div class='section-card'>
-            <div class='section-title'>Financing Summary</div>
-            <div class='fin-grid'>
-                <div class='fin-box'>
-                    <div class='fin-label'>Debt</div>
-                    <div class='fin-value'>€{result['debt']:.0f}k</div>
-                </div>
-                <div class='fin-box'>
-                    <div class='fin-label'>Equity</div>
-                    <div class='fin-value'>€{result['equity']:.0f}k</div>
-                </div>
-                <div class='fin-box'>
-                    <div class='fin-label'>Debt Service</div>
-                    <div class='fin-value'>€{result['debt_service']:.1f}k/yr</div>
-                </div>
-                <div class='fin-box'>
-                    <div class='fin-label'>Variance</div>
-                    <div class='fin-value'>{result['variance']:.0f}%</div>
-                </div>
+        # Financing Summary - split into separate markdown calls to avoid rendering issues
+        st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Financing Summary</div>", unsafe_allow_html=True)
+        
+        fin_grid_html = f"""
+        <div class="fin-grid">
+            <div class="fin-box">
+                <div class="fin-label">Debt</div>
+                <div class="fin-value">€{result['debt']:.0f}k</div>
             </div>
-            
-            <div class='irr-title'>Equity IRR by Scenario</div>
-            <div class='irr-row p99'>
-                <span class='irr-label p99'>P99 (Stress)</span>
-                <span class='irr-value p99'>{result['p99']['irr']:.1f}%</span>
+            <div class="fin-box">
+                <div class="fin-label">Equity</div>
+                <div class="fin-value">€{result['equity']:.0f}k</div>
             </div>
-            <div class='irr-row p50'>
-                <span class='irr-label p50'>P50 (Base)</span>
-                <span class='irr-value p50'>{result['p50']['irr']:.1f}%</span>
+            <div class="fin-box">
+                <div class="fin-label">Debt Service</div>
+                <div class="fin-value">€{result['debt_service']:.1f}k/yr</div>
             </div>
-            <div class='irr-row p1'>
-                <span class='irr-label p1'>P1 (Upside)</span>
-                <span class='irr-value p1'>{result['p1']['irr']:.1f}%</span>
-            </div>
-            
-            <div class='leverage-box'>
-                <div class='leverage-title'>Leverage Effect</div>
-                <div class='leverage-text'>Unlevered: {result['unlev_irr']:.1f}% → Levered: {result['p50']['irr']:.1f}% ({'+' if result['p50']['irr'] - result['unlev_irr'] >= 0 else ''}{result['p50']['irr'] - result['unlev_irr']:.1f}%)</div>
+            <div class="fin-box">
+                <div class="fin-label">Variance</div>
+                <div class="fin-value">{result['variance']:.0f}%</div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        st.markdown(fin_grid_html, unsafe_allow_html=True)
+        
+        st.markdown("<div class='irr-title'>Equity IRR by Scenario</div>", unsafe_allow_html=True)
+        
+        irr_p99_html = f"""
+        <div class="irr-row-p99">
+            <span class="irr-label-p99">P99 (Stress)</span>
+            <span class="irr-value-p99">{result['p99']['irr']:.1f}%</span>
+        </div>
+        """
+        st.markdown(irr_p99_html, unsafe_allow_html=True)
+        
+        irr_p50_html = f"""
+        <div class="irr-row-p50">
+            <span class="irr-label-p50">P50 (Base)</span>
+            <span class="irr-value-p50">{result['p50']['irr']:.1f}%</span>
+        </div>
+        """
+        st.markdown(irr_p50_html, unsafe_allow_html=True)
+        
+        irr_p1_html = f"""
+        <div class="irr-row-p1">
+            <span class="irr-label-p1">P1 (Upside)</span>
+            <span class="irr-value-p1">{result['p1']['irr']:.1f}%</span>
+        </div>
+        """
+        st.markdown(irr_p1_html, unsafe_allow_html=True)
+        
+        lev_effect = result['p50']['irr'] - result['unlev_irr']
+        lev_sign = "+" if lev_effect >= 0 else ""
+        leverage_html = f"""
+        <div class="leverage-box">
+            <div class="leverage-title">Leverage Effect</div>
+            <div class="leverage-text">Unlevered: {result['unlev_irr']:.1f}% → Levered: {result['p50']['irr']:.1f}% ({lev_sign}{lev_effect:.1f}%)</div>
+        </div>
+        """
+        st.markdown(leverage_html, unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
         
         # Bankability Map
         st.markdown("<div class='section-card'><div class='section-title'>Bankability Map</div>", unsafe_allow_html=True)
         st.caption(f"At €{toll_level:.0f}k toll level")
         
-        # Generate map data
         df = generate_bankability_map(capex, opex, toll_level, dscr_target, debt_rate, tenor, sculpted, deg_on, deg_rate)
         
-        # Create figure
         fig = go.Figure()
         
-        # Not bankable points
         not_bankable = df[~df['bankable']]
         if len(not_bankable) > 0:
             fig.add_trace(go.Scatter(
@@ -701,30 +725,27 @@ with right_col:
                 hovertemplate='Gearing: %{y}%<br>Toll: %{x}%<extra></extra>'
             ))
         
-        # Bankable points
-        bankable = df[df['bankable']]
-        if len(bankable) > 0:
+        bankable_df = df[df['bankable']]
+        if len(bankable_df) > 0:
             fig.add_trace(go.Scatter(
-                x=bankable['toll_pct'],
-                y=bankable['gearing'],
+                x=bankable_df['toll_pct'],
+                y=bankable_df['gearing'],
                 mode='markers',
                 name='Bankable',
                 marker=dict(color='#86efac', size=16, line=dict(width=1, color='#bbf7d0')),
                 hovertemplate='Gearing: %{y}%<br>Toll: %{x}%<br>IRR: %{customdata:.1f}%<extra></extra>',
-                customdata=bankable['irr']
+                customdata=bankable_df['irr']
             ))
         
-        # Current position
         fig.add_trace(go.Scatter(
             x=[toll_pct],
             y=[gearing],
             mode='markers',
             name='Current',
             marker=dict(color='#1e40af', size=20, symbol='star', line=dict(width=2, color='white')),
-            hovertemplate=f'<b>Your position</b><br>Gearing: {gearing:.0f}%<br>Toll: {toll_pct:.0f}%<extra></extra>'
+            hovertemplate=f'Your position<br>Gearing: {gearing:.0f}%<br>Toll: {toll_pct:.0f}%<extra></extra>'
         ))
         
-        # Layout - FIXED: Using title_font instead of deprecated titlefont
         fig.update_layout(
             height=280,
             margin=dict(l=50, r=20, t=10, b=50),
