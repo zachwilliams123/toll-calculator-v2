@@ -298,13 +298,24 @@ st.markdown("""
 # DATA & CONSTANTS
 # ============================================================================
 # Modo Energy German BESS Revenue Forecasts (€k/MW/year)
-REVENUE_DATA = {
-    'year': list(range(2026, 2036)),
-    'low': [142, 94, 76, 72, 69, 68, 68, 70, 67, 67],     # Gas Low scenario
-    'base': [240, 155, 129, 124, 119, 117, 118, 118, 117, 114], # Central scenario
-    'high': [338, 217, 181, 175, 169, 167, 168, 167, 167, 162]  # Derived: Central + (Central - Low)
+# Full forecast 2026-2040, user selects COD year
+REVENUE_DATA_FULL = {
+    'year': list(range(2026, 2041)),
+    'low':  [142, 94, 76, 72, 69, 68, 68, 70, 67, 67, 69, 72, 73, 79, 75],      # Gas Low
+    'base': [240, 155, 129, 124, 119, 117, 118, 118, 117, 114, 115, 119, 119, 118, 114], # Central
+    'high': [319, 205, 168, 163, 158, 154, 157, 155, 151, 154, 154, 156, 150, 147, 135]  # Gas High
 }
-# Note: High case derived symmetrically. Low is ~40% below Central, High is ~40% above.
+
+def get_revenue_data(cod_year):
+    """Get 10-year revenue forecast starting from COD year"""
+    start_idx = cod_year - 2026
+    end_idx = start_idx + 10
+    return {
+        'year': REVENUE_DATA_FULL['year'][start_idx:end_idx],
+        'low': REVENUE_DATA_FULL['low'][start_idx:end_idx],
+        'base': REVENUE_DATA_FULL['base'][start_idx:end_idx],
+        'high': REVENUE_DATA_FULL['high'][start_idx:end_idx]
+    }
 
 EURIBOR = 2.25  # Current 6-month EURIBOR (Jan 2026)
 
@@ -412,18 +423,19 @@ def get_structure_label(toll_pct):
 # FINANCIAL MODEL
 # ============================================================================
 @st.cache_data
-def calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_target, debt_rate, tenor, deg_on):
+def calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_target, debt_rate, tenor, deg_on, cod_year):
     deg_rate = 0.025
-    years = REVENUE_DATA['year']
+    revenue_data = get_revenue_data(cod_year)
+    years = revenue_data['year']
     n_years = len(years)
     
     # Degradation factors
     deg_factors = [(1 - deg_rate) ** i if deg_on else 1.0 for i in range(n_years)]
     
     # Apply degradation to merchant revenues
-    low_rev = [REVENUE_DATA['low'][i] * deg_factors[i] for i in range(n_years)]
-    base_rev = [REVENUE_DATA['base'][i] * deg_factors[i] for i in range(n_years)]
-    high_rev = [REVENUE_DATA['high'][i] * deg_factors[i] for i in range(n_years)]
+    low_rev = [revenue_data['low'][i] * deg_factors[i] for i in range(n_years)]
+    base_rev = [revenue_data['base'][i] * deg_factors[i] for i in range(n_years)]
+    high_rev = [revenue_data['high'][i] * deg_factors[i] for i in range(n_years)]
     
     toll_frac = toll_pct / 100
     
@@ -511,7 +523,7 @@ def calculate_project(capex, opex, gearing, toll_pct, toll_level, dscr_target, d
         'high_case': high_result,
     }
 
-def find_max_gearing(capex, opex, toll_pct, toll_level, deg_on):
+def find_max_gearing(capex, opex, toll_pct, toll_level, deg_on, cod_year):
     """Binary search for max gearing that passes DSCR"""
     dscr_target = get_dscr_target(toll_pct)
     margin = get_margin_bps(toll_pct)
@@ -524,7 +536,7 @@ def find_max_gearing(capex, opex, toll_pct, toll_level, deg_on):
     
     for _ in range(25):
         mid = (lo + hi) / 2
-        result = calculate_project(capex, opex, mid, toll_pct, toll_level, dscr_target, debt_rate, tenor, deg_on)
+        result = calculate_project(capex, opex, mid, toll_pct, toll_level, dscr_target, debt_rate, tenor, deg_on, cod_year)
         if result and result['debt_feasible']:
             best = mid
             lo = mid
@@ -533,7 +545,7 @@ def find_max_gearing(capex, opex, toll_pct, toll_level, deg_on):
     
     return round(best, 1)
 
-def find_min_toll_pct(capex, opex, gearing, toll_level, deg_on):
+def find_min_toll_pct(capex, opex, gearing, toll_level, deg_on, cod_year):
     """Binary search for minimum toll % that passes DSCR at given gearing"""
     lo, hi = 0, 100
     best = 100
@@ -547,7 +559,7 @@ def find_min_toll_pct(capex, opex, gearing, toll_level, deg_on):
         debt_rate = EURIBOR + margin / 100
         tenor = get_tenor(mid)
         
-        result = calculate_project(capex, opex, gearing, mid, toll_level, dscr_target, debt_rate, tenor, deg_on)
+        result = calculate_project(capex, opex, gearing, mid, toll_level, dscr_target, debt_rate, tenor, deg_on, cod_year)
         if result and result['debt_feasible']:
             best = mid
             hi = mid
@@ -556,19 +568,19 @@ def find_min_toll_pct(capex, opex, gearing, toll_level, deg_on):
     
     return round(best, 1)
 
-def find_min_toll_level(capex, opex, gearing, toll_pct, deg_on):
+def find_min_toll_level(capex, opex, gearing, toll_pct, deg_on, cod_year):
     """Binary search for minimum toll level that passes DSCR"""
     dscr_target = get_dscr_target(toll_pct)
     margin = get_margin_bps(toll_pct)
     debt_rate = EURIBOR + margin / 100
     tenor = get_tenor(toll_pct)
     
-    lo, hi = 50, 300
-    best = 200
+    lo, hi = 50, 200
+    best = 300
     
     for _ in range(25):
         mid = (lo + hi) / 2
-        result = calculate_project(capex, opex, gearing, toll_pct, mid, dscr_target, debt_rate, tenor, deg_on)
+        result = calculate_project(capex, opex, gearing, toll_pct, mid, dscr_target, debt_rate, tenor, deg_on, cod_year)
         if result and result['debt_feasible']:
             best = mid
             hi = mid
@@ -598,9 +610,9 @@ st.markdown('<div class="mode-title">Calculator Mode</div>', unsafe_allow_html=T
 
 mode_cols = st.columns([1, 1, 2])
 with mode_cols[0]:
-    manual_btn = st.button("📊 Manual", use_container_width=True, type="secondary" if st.session_state.get('mode', 'Manual') == 'Optimise' else "primary")
+    manual_btn = st.button("Manual", use_container_width=True, type="secondary" if st.session_state.get('mode', 'Manual') == 'Optimise' else "primary")
 with mode_cols[1]:
-    optimise_btn = st.button("🎯 Optimise", use_container_width=True, type="primary" if st.session_state.get('mode', 'Manual') == 'Optimise' else "secondary")
+    optimise_btn = st.button("Optimise", use_container_width=True, type="primary" if st.session_state.get('mode', 'Manual') == 'Optimise' else "secondary")
 
 if manual_btn:
     st.session_state['mode'] = 'Manual'
@@ -626,7 +638,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 # ============================================================================
 # MAIN LAYOUT - TWO COLUMNS
 # ============================================================================
-left_col, right_col = st.columns([1, 1.05], gap="medium")
+left_col, right_col = st.columns([1, 1], gap="medium")
 
 # ============================================================================
 # LEFT COLUMN - INPUTS
@@ -638,11 +650,11 @@ with left_col:
     # Determine which inputs to show based on mode
     if mode == "Optimise" and solve_for == "Max Gearing":
         toll_pct = st.slider("Toll Coverage %", 0, 100, 65, help="% of asset capacity under toll agreement")
-        toll_level = st.slider("Toll Level (€k/MW/yr)", 50, 250, 150, help="Annual payment per MW for tolled capacity")
+        toll_level = st.slider("Toll Level (€k/MW/yr)", 75, 150, 100, help="Annual payment per MW for tolled capacity")
         gearing = None  # Will be solved
     elif mode == "Optimise" and solve_for == "Min Toll %":
         gearing = st.slider("Gearing %", 10, 85, 65, help="Debt as % of total CapEx")
-        toll_level = st.slider("Toll Level (€k/MW/yr)", 50, 250, 150)
+        toll_level = st.slider("Toll Level (€k/MW/yr)", 75, 150, 100)
         toll_pct = None  # Will be solved
     elif mode == "Optimise" and solve_for == "Min Toll €":
         gearing = st.slider("Gearing %", 10, 85, 65)
@@ -651,24 +663,28 @@ with left_col:
     else:  # Manual mode
         gearing = st.slider("Gearing %", 10, 85, 65)
         toll_pct = st.slider("Toll Coverage %", 0, 100, 65)
-        toll_level = st.slider("Toll Level (€k/MW/yr)", 50, 250, 150)
-    
-    # Show toll as % of P50
-    if toll_level is not None:
-        year1_base = REVENUE_DATA['base'][0]
-        toll_pct_of_base = (toll_level / year1_base) * 100
-        st.caption(f"Toll = {toll_pct_of_base:.0f}% of Year 1 base case (€{year1_base}k)")
+        toll_level = st.slider("Toll Level (€k/MW/yr)", 75, 150, 100)
     
     st.markdown('</div>', unsafe_allow_html=True)
     
     # PROJECT section
     st.markdown('<div class="section-card"><div class="section-title">Project</div>', unsafe_allow_html=True)
-    proj_cols = st.columns(2)
+    proj_cols = st.columns(3)
     with proj_cols[0]:
         capex = st.number_input("CapEx (€k/MW)", 300, 1000, 600, 25)
     with proj_cols[1]:
         opex = st.number_input("Opex (€k/yr)", 0, 30, 7, 1)
+    with proj_cols[2]:
+        cod_year = st.selectbox("COD Year", [2026, 2027, 2028], index=1, help="Commercial Operation Date")
     deg_on = st.checkbox("Capacity degradation (2.5%/yr)", True)
+    
+    # Show toll as % of COD year base revenue
+    if toll_level is not None:
+        cod_revenue = get_revenue_data(cod_year)
+        year1_base = cod_revenue['base'][0]
+        toll_pct_of_base = (toll_level / year1_base) * 100
+        st.caption(f"Toll = {toll_pct_of_base:.0f}% of {cod_year} base case (€{year1_base}k)")
+    
     st.markdown('</div>', unsafe_allow_html=True)
     
     # FINANCING TERMS section
@@ -704,7 +720,7 @@ with left_col:
     
     # Gearing warning
     if gearing is not None and gearing > max_gear:
-        st.markdown(f'<div class="warning-box">⚠️ Gearing ({gearing}%) exceeds typical max ({max_gear}%) for {structure_label.lower()} structures</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="warning-box">Gearing ({gearing}%) exceeds typical max ({max_gear}%) for {structure_label.lower()} structures</div>', unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -713,11 +729,11 @@ with left_col:
 # ============================================================================
 if mode == "Optimise":
     if solve_for == "Max Gearing":
-        gearing = find_max_gearing(capex, opex, toll_pct, toll_level, deg_on)
+        gearing = find_max_gearing(capex, opex, toll_pct, toll_level, deg_on, cod_year)
     elif solve_for == "Min Toll %":
-        toll_pct = find_min_toll_pct(capex, opex, gearing, toll_level, deg_on)
+        toll_pct = find_min_toll_pct(capex, opex, gearing, toll_level, deg_on, cod_year)
     elif solve_for == "Min Toll €":
-        toll_level = find_min_toll_level(capex, opex, gearing, toll_pct, deg_on)
+        toll_level = find_min_toll_level(capex, opex, gearing, toll_pct, deg_on, cod_year)
 
 # Recalculate final financing terms with solved values
 final_toll_pct = toll_pct if toll_pct is not None else 65
@@ -727,7 +743,7 @@ final_debt_rate = EURIBOR + final_margin / 100
 final_tenor = get_tenor(final_toll_pct)
 
 # Calculate results
-result = calculate_project(capex, opex, gearing, final_toll_pct, toll_level, final_dscr_target, final_debt_rate, final_tenor, deg_on)
+result = calculate_project(capex, opex, gearing, final_toll_pct, toll_level, final_dscr_target, final_debt_rate, final_tenor, deg_on, cod_year)
 
 # ============================================================================
 # RIGHT COLUMN - RESULTS
@@ -749,7 +765,7 @@ with right_col:
                 <div class="solved-box">
                     <div class="solved-label">Maximum Gearing</div>
                     <div class="solved-value">{gearing:.1f}%</div>
-                    <div class="solved-context">at {toll_pct}% toll, €{toll_level}k toll level</div>
+                    <div class="solved-context">at {toll_pct}% toll coverage, {cod_year} COD</div>
                 </div>
                 """
             elif solve_for == "Min Toll %":
@@ -757,39 +773,63 @@ with right_col:
                 <div class="solved-box">
                     <div class="solved-label">Minimum Toll Coverage</div>
                     <div class="solved-value">{toll_pct:.1f}%</div>
-                    <div class="solved-context">at {gearing}% gearing, €{toll_level}k toll level</div>
+                    <div class="solved-context">at {gearing}% gearing, {cod_year} COD</div>
                 </div>
                 """
             elif solve_for == "Min Toll €":
                 solved_html = f"""
                 <div class="solved-box">
                     <div class="solved-label">Minimum Toll Level</div>
-                    <div class="solved-value">€{toll_level:.0f}k</div>
-                    <div class="solved-context">at {gearing}% gearing, {toll_pct}% toll coverage</div>
+                    <div class="solved-value">{toll_level:.0f}k/MW/yr</div>
+                    <div class="solved-context">at {gearing}% gearing, {toll_pct}% coverage</div>
                 </div>
                 """
             st.markdown(solved_html, unsafe_allow_html=True)
         
-        # EQUITY RETURNS card
+        # ---- DEBT FEASIBILITY (top) ----
+        dscr_margin = min_dscr - final_dscr_target
+        if result['debt_feasible']:
+            debt_class = "result-pass"
+            debt_badge = "FEASIBLE"
+        else:
+            debt_class = "result-fail"
+            debt_badge = "NOT FEASIBLE"
+        
+        dscr_sign = "+" if dscr_margin >= 0 else ""
+        debt_html = f"""
+        <div class="{debt_class}">
+            <div class="result-header">
+                <div>
+                    <div class="result-label">Debt Feasibility (Low Case DSCR)</div>
+                    <div class="result-value">{min_dscr:.2f}x</div>
+                    <div class="result-detail">vs {final_dscr_target:.2f}x target ({dscr_sign}{dscr_margin:.2f}x buffer)</div>
+                </div>
+                <div class="result-badge">{debt_badge}</div>
+            </div>
+        </div>
+        """
+        st.markdown(debt_html, unsafe_allow_html=True)
+        
+        # ---- EQUITY RETURNS ----
         irr_vs_hurdle = base_irr - hurdle
         if irr_vs_hurdle >= 0:
             equity_class = "result-pass"
-            equity_badge = "✓ MEETS HURDLE"
+            equity_badge = "MEETS HURDLE"
         elif irr_vs_hurdle >= -3:
             equity_class = "result-warn"
-            equity_badge = "~ NEAR HURDLE"
+            equity_badge = "NEAR HURDLE"
         else:
             equity_class = "result-fail"
-            equity_badge = "✗ BELOW HURDLE"
+            equity_badge = "BELOW HURDLE"
         
         sign = "+" if irr_vs_hurdle >= 0 else ""
         equity_html = f"""
         <div class="{equity_class}">
             <div class="result-header">
                 <div>
-                    <div class="result-label">Equity Return (Base Case)</div>
+                    <div class="result-label">Equity IRR (Base Case)</div>
                     <div class="result-value">{base_irr:.1f}%</div>
-                    <div class="result-detail">vs {hurdle:.0f}% hurdle ({risk_label}) → {sign}{irr_vs_hurdle:.1f}%</div>
+                    <div class="result-detail">vs {hurdle:.0f}% hurdle ({sign}{irr_vs_hurdle:.1f}%)</div>
                 </div>
                 <div class="result-badge">{equity_badge}</div>
             </div>
@@ -797,7 +837,7 @@ with right_col:
         """
         st.markdown(equity_html, unsafe_allow_html=True)
         
-        # Scenario boxes
+        # ---- SCENARIO BOXES (Low/High) ----
         def get_class(irr, h):
             if irr >= h: return "green"
             elif irr >= h - 3: return "amber"
@@ -820,59 +860,35 @@ with right_col:
         """
         st.markdown(scenario_html, unsafe_allow_html=True)
         
-        st.markdown("<div style='height:0.3rem'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
         
-        # DEBT FEASIBILITY card
-        dscr_margin = min_dscr - final_dscr_target
-        if result['debt_feasible']:
-            debt_class = "result-pass"
-            debt_badge = "✓ FEASIBLE"
-        else:
-            debt_class = "result-fail"
-            debt_badge = "✗ NOT FEASIBLE"
-        
-        dscr_sign = "+" if dscr_margin >= 0 else ""
-        debt_html = f"""
-        <div class="{debt_class}">
-            <div class="result-header">
-                <div>
-                    <div class="result-label">Debt Feasibility (Low Case Min DSCR)</div>
-                    <div class="result-value">{min_dscr:.2f}x</div>
-                    <div class="result-detail">vs {final_dscr_target:.2f}x target → {dscr_sign}{dscr_margin:.2f}x</div>
-                </div>
-                <div class="result-badge">{debt_badge}</div>
-            </div>
-        </div>
-        """
-        st.markdown(debt_html, unsafe_allow_html=True)
-        
-        # Summary metrics
+        # ---- FINANCIAL SUMMARY ----
         metrics_html = f"""
         <div class="metrics-row">
             <div class="metric-box">
-                <div class="metric-value">€{result['debt']:.0f}k</div>
+                <div class="metric-value">{result['unlev_irr']:.1f}%</div>
+                <div class="metric-label">Unlev IRR</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-value">{result['gearing']:.0f}%</div>
+                <div class="metric-label">Gearing</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-value">{result['debt']:.0f}k</div>
                 <div class="metric-label">Debt</div>
             </div>
             <div class="metric-box">
-                <div class="metric-value">€{result['equity']:.0f}k</div>
+                <div class="metric-value">{result['equity']:.0f}k</div>
                 <div class="metric-label">Equity</div>
-            </div>
-            <div class="metric-box">
-                <div class="metric-value">€{result['avg_debt_service']:.0f}k/yr</div>
-                <div class="metric-label">Debt Service</div>
-            </div>
-            <div class="metric-box">
-                <div class="metric-value">{result['unlev_irr']:.1f}%</div>
-                <div class="metric-label">Unlev IRR</div>
             </div>
         </div>
         """
         st.markdown(metrics_html, unsafe_allow_html=True)
         
-        # Leverage effect
+        # Leverage effect note
         lev_effect = base_irr - result['unlev_irr']
         lev_sign = "+" if lev_effect >= 0 else ""
-        st.markdown(f'<div class="note-box">Leverage effect: {result["unlev_irr"]:.1f}% → {base_irr:.1f}% ({lev_sign}{lev_effect:.1f}%)</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="note-box">Leverage effect: {result["unlev_irr"]:.1f}% unlevered to {base_irr:.1f}% levered ({lev_sign}{lev_effect:.1f}%)</div>', unsafe_allow_html=True)
         
     else:
         st.error("Unable to calculate. Check inputs.")
@@ -880,4 +896,4 @@ with right_col:
 # ============================================================================
 # FOOTER
 # ============================================================================
-st.markdown('<div class="footer">1.5 cycle · 2hr duration · German BESS · Modo Energy forecasts 2026–2035 · Educational only · Not financial advice</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">1.5 cycle · 2hr duration · German BESS · Modo forecasts 2026–2040 · Educational only · Not financial advice</div>', unsafe_allow_html=True)
