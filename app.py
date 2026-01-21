@@ -119,8 +119,6 @@ st.markdown("""
     div[data-testid="stNumberInput"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     div[data-testid="stNumberInput"] { margin-bottom: 0.15rem; }
     div[data-testid="stNumberInput"] > div { max-width: 130px; }
-    div[data-testid="stSelectbox"] > div { min-width: 85px; }
-    div[data-testid="stSelectbox"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     
     /* Gray subtle button */
     div[data-testid="stButton"] button {
@@ -244,8 +242,6 @@ if 'capex' not in st.session_state:
     st.session_state.capex = 600
 if 'opex' not in st.session_state:
     st.session_state.opex = 7
-if 'cod' not in st.session_state:
-    st.session_state.cod = 2027
 
 # ============================================================================
 # HEADER
@@ -267,7 +263,7 @@ with left:
     with col2:
         st.markdown("<div style='height: 1.7rem;'></div>", unsafe_allow_html=True)
         if st.button("Min coverage", use_container_width=True):
-            min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_level, st.session_state.cod)
+            min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_level, 2027)
             if min_cov is not None:
                 st.session_state.toll_slider = min_cov
                 st.rerun()
@@ -291,7 +287,7 @@ with left:
     ''', unsafe_allow_html=True)
     
     # Debt/Equity under gearing
-    result = calculate(st.session_state.capex, st.session_state.opex, toll_pct, toll_level, st.session_state.cod)
+    result = calculate(st.session_state.capex, st.session_state.opex, toll_pct, toll_level, 2027)
     if result:
         st.markdown(f'''
         <div class="capital-row">
@@ -382,20 +378,17 @@ with right:
     # Project inputs - plain
     st.markdown('<div class="project-inputs">', unsafe_allow_html=True)
     
-    pc1, pc2, pc3 = st.columns([1.1, 1, 1])
+    pc1, pc2 = st.columns([1, 1])
     with pc1:
         capex = st.number_input("CapEx (€k)", 300, 1000, st.session_state.capex, 25, key="capex_input")
         st.session_state.capex = capex
     with pc2:
         opex = st.number_input("OpEx (€k/yr)", 0, 30, st.session_state.opex, 1, key="opex_input")
         st.session_state.opex = opex
-    with pc3:
-        cod = st.selectbox("COD", [2026, 2027, 2028], index=[2026,2027,2028].index(st.session_state.cod), key="cod_input")
-        st.session_state.cod = cod
     
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
 # FOOTER
 # ============================================================================
-st.markdown('<div class="footer">2hr · 1.5 cycle · 7yr tenor · 2.5% degradation · Modo forecasts · Educational only</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">2hr · 1.5 cycle · 7yr tenor · 2.5% degradation · COD 2027 · Modo forecasts · Educational only</div>', unsafe_allow_html=True)
