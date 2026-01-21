@@ -36,13 +36,9 @@ st.markdown("""
     .main-title { font-size: 1.3rem; font-weight: 700; color: #1a1a2e; }
     .brand-text { font-size: 0.8rem; color: #1a1a2e; font-weight: 600; }
     
-    .section-card {
-        background: #fff; border-radius: 10px; padding: 0.9rem 1.1rem;
-        border: 1px solid #e2e8f0; margin-bottom: 0.5rem;
-    }
-    .section-title {
+    .section-label {
         font-size: 0.6rem; font-weight: 600; color: #64748b;
-        margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em;
+        margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
     }
     
     /* Gearing bar */
@@ -123,7 +119,7 @@ st.markdown("""
     div[data-testid="stNumberInput"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     div[data-testid="stNumberInput"] { margin-bottom: 0.15rem; }
     div[data-testid="stNumberInput"] > div { max-width: 130px; }
-    div[data-testid="stSelectbox"] > div { max-width: 95px; }
+    div[data-testid="stSelectbox"] > div { max-width: 110px; }
     div[data-testid="stSelectbox"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     
     /* Gray subtle button */
@@ -176,7 +172,6 @@ def get_hurdle(toll_pct):
 # ============================================================================
 # FINANCIAL MODEL
 # ============================================================================
-@st.cache_data
 def calculate(capex, opex, toll_pct, toll_level, cod):
     revenue = REVENUE_DATA.get(cod, REVENUE_DATA[2027])
     
@@ -263,7 +258,7 @@ st.markdown('<div class="header-row"><div class="main-title">Battery Toll Calcul
 left, right = st.columns([1, 1.1], gap="large")
 
 with left:
-    st.markdown('<div class="section-card"><div class="section-title">Structure</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Structure</div>', unsafe_allow_html=True)
     
     # Toll level + subtle find minimum button
     col1, col2 = st.columns([1.2, 1])
@@ -317,14 +312,12 @@ with left:
         <span class="term-chip"><strong>7yr</strong> tenor</span>
     </div>
     ''', unsafe_allow_html=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
 # RESULTS
 # ============================================================================
 with right:
-    st.markdown('<div class="section-title" style="margin-bottom: 0.5rem;">Results</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Results</div>', unsafe_allow_html=True)
     
     if result:
         hurdle = get_hurdle(toll_pct)
