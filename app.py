@@ -1,12 +1,12 @@
 """
-Battery Toll Calculator v8.0
+Battery Toll Calculator v9.0
 Modo Energy - German BESS
 
-Final version:
-- 7-year tenor (standard for German tolls)
-- Toll level 80-120k (realistic market range)
-- Linear financing relationships
-- Gearing derived from toll structure
+Refined UI:
+- Button moves slider to minimum viable coverage
+- Balanced two-column layout
+- Project settings at bottom
+- Compact financing terms
 """
 
 import streamlit as st
@@ -27,7 +27,7 @@ st.markdown("""
     }
     
     #MainMenu, footer, header {visibility: hidden;}
-    .block-container {padding: 1rem 1.5rem 1rem 1.5rem; max-width: 950px;}
+    .block-container {padding: 1rem 1.5rem 0.5rem 1.5rem; max-width: 900px;}
     
     .header-row {
         display: flex; justify-content: space-between; align-items: center;
@@ -37,92 +37,105 @@ st.markdown("""
     .brand-text { font-size: 0.75rem; color: #1a1a2e; font-weight: 600; }
     
     .section-card {
-        background: #fff; border-radius: 8px; padding: 0.7rem 0.9rem;
-        border: 1px solid #e2e8f0; margin-bottom: 0.5rem;
+        background: #fff; border-radius: 8px; padding: 0.6rem 0.85rem;
+        border: 1px solid #e2e8f0; margin-bottom: 0.4rem;
     }
     .section-title {
-        font-size: 0.6rem; font-weight: 600; color: #64748b;
-        margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
+        font-size: 0.55rem; font-weight: 600; color: #64748b;
+        margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em;
     }
     
-    .gearing-container { margin: 0.4rem 0; }
-    .gearing-label { font-size: 0.65rem; color: #475569; margin-bottom: 0.2rem; }
+    /* Compact gearing bar */
+    .gearing-row {
+        display: flex; align-items: center; gap: 0.5rem; margin: 0.3rem 0;
+    }
+    .gearing-label { font-size: 0.6rem; color: #64748b; min-width: 50px; }
     .gearing-bar-bg {
-        background: #e2e8f0; border-radius: 4px; height: 24px;
+        flex: 1; background: #e2e8f0; border-radius: 4px; height: 18px;
         position: relative; overflow: hidden;
     }
     .gearing-bar-fill {
         background: linear-gradient(90deg, #3b82f6 0%, #1d4ed8 100%);
         height: 100%; border-radius: 4px;
-        display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
-        transition: width 0.3s ease;
+        display: flex; align-items: center; justify-content: flex-end; padding-right: 6px;
     }
-    .gearing-value { font-size: 0.75rem; font-weight: 600; color: white; }
-    .gearing-scale {
-        display: flex; justify-content: space-between;
-        font-size: 0.5rem; color: #94a3b8; margin-top: 2px;
-    }
+    .gearing-value { font-size: 0.65rem; font-weight: 600; color: white; }
     
+    /* Compact terms row */
+    .terms-compact {
+        display: flex; gap: 0.5rem; margin-top: 0.3rem;
+    }
+    .term-chip {
+        background: #f1f5f9; border-radius: 4px; padding: 0.25rem 0.5rem;
+        font-size: 0.6rem; color: #475569;
+    }
+    .term-chip strong { color: #1e293b; }
+    
+    /* Result cards */
     .result-pass {
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        border-radius: 8px; padding: 0.65rem 0.85rem; color: white; margin-bottom: 0.4rem;
+        border-radius: 8px; padding: 0.55rem 0.75rem; color: white; margin-bottom: 0.35rem;
     }
     .result-warn {
         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-        border-radius: 8px; padding: 0.65rem 0.85rem; color: white; margin-bottom: 0.4rem;
+        border-radius: 8px; padding: 0.55rem 0.75rem; color: white; margin-bottom: 0.35rem;
     }
     .result-fail {
         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        border-radius: 8px; padding: 0.65rem 0.85rem; color: white; margin-bottom: 0.4rem;
+        border-radius: 8px; padding: 0.55rem 0.75rem; color: white; margin-bottom: 0.35rem;
     }
     .result-header { display: flex; justify-content: space-between; align-items: center; }
-    .result-label { font-size: 0.55rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.03em; }
-    .result-value { font-size: 1.3rem; font-weight: 700; line-height: 1.1; }
-    .result-detail { font-size: 0.65rem; opacity: 0.9; }
-    .result-badge { font-size: 0.5rem; font-weight: 600; padding: 3px 6px; border-radius: 4px; background: rgba(255,255,255,0.2); }
+    .result-label { font-size: 0.5rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.03em; }
+    .result-value { font-size: 1.2rem; font-weight: 700; line-height: 1.1; }
+    .result-detail { font-size: 0.6rem; opacity: 0.9; }
+    .result-badge { font-size: 0.45rem; font-weight: 600; padding: 2px 5px; border-radius: 3px; background: rgba(255,255,255,0.2); }
     
-    .scenario-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; margin-bottom: 0.35rem; }
-    .scenario-box { border-radius: 6px; padding: 0.4rem 0.5rem; text-align: center; }
+    /* Scenarios */
+    .scenario-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; margin-bottom: 0.3rem; }
+    .scenario-box { border-radius: 5px; padding: 0.3rem 0.4rem; text-align: center; }
     .scenario-box.green { background: #ecfdf5; border: 1px solid #a7f3d0; }
     .scenario-box.amber { background: #fffbeb; border: 1px solid #fde68a; }
     .scenario-box.red { background: #fef2f2; border: 1px solid #fecaca; }
-    .scenario-label { font-size: 0.55rem; color: #64748b; }
-    .scenario-value { font-size: 0.9rem; font-weight: 600; }
+    .scenario-label { font-size: 0.5rem; color: #64748b; }
+    .scenario-value { font-size: 0.8rem; font-weight: 600; }
     .scenario-value.green { color: #059669; }
     .scenario-value.amber { color: #d97706; }
     .scenario-value.red { color: #dc2626; }
     
-    .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.3rem; }
-    .metric-box { background: #f8fafc; border-radius: 5px; padding: 0.35rem 0.4rem; text-align: center; border: 1px solid #e2e8f0; }
-    .metric-value { font-size: 0.8rem; font-weight: 700; color: #1e293b; }
-    .metric-label { font-size: 0.45rem; color: #64748b; text-transform: uppercase; }
+    /* Metrics */
+    .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.25rem; }
+    .metric-box { background: #f8fafc; border-radius: 4px; padding: 0.3rem; text-align: center; border: 1px solid #e2e8f0; }
+    .metric-value { font-size: 0.75rem; font-weight: 700; color: #1e293b; }
+    .metric-label { font-size: 0.4rem; color: #64748b; text-transform: uppercase; }
     
-    .terms-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.3rem; }
-    .term-item { background: #f8fafc; border-radius: 5px; padding: 0.35rem 0.4rem; text-align: center; }
-    .term-value { font-size: 0.8rem; font-weight: 600; color: #1e293b; }
-    .term-label { font-size: 0.45rem; color: #64748b; text-transform: uppercase; }
-    
-    .optimal-box {
-        background: #dbeafe; border: 1px solid #3b82f6; border-radius: 6px;
-        padding: 0.4rem 0.6rem; margin-top: 0.4rem;
+    /* Project row */
+    .project-row {
+        display: flex; align-items: center; gap: 1rem;
+        padding: 0.4rem 0; border-top: 1px solid #e2e8f0; margin-top: 0.3rem;
     }
-    .optimal-label { font-size: 0.55rem; color: #1d4ed8; text-transform: uppercase; }
-    .optimal-value { font-size: 1rem; font-weight: 700; color: #1d4ed8; }
+    .project-label { font-size: 0.55rem; color: #64748b; text-transform: uppercase; font-weight: 600; }
     
-    .footer { text-align: center; font-size: 0.5rem; color: #94a3b8; margin-top: 0.5rem; padding-top: 0.3rem; border-top: 1px solid #f1f5f9; }
+    .footer { 
+        text-align: center; font-size: 0.5rem; color: #94a3b8; 
+        margin-top: 0.4rem; padding-top: 0.3rem; border-top: 1px solid #f1f5f9; 
+    }
     
-    div[data-testid="stSlider"] { padding-top: 0 !important; padding-bottom: 0.15rem !important; }
-    div[data-testid="stSlider"] label p { font-size: 0.65rem !important; color: #475569 !important; }
-    div[data-testid="stNumberInput"] label p { font-size: 0.65rem !important; color: #475569 !important; }
-    div[data-testid="stNumberInput"] { margin-bottom: 0.3rem; }
-    div[data-testid="stSelectbox"] label p { font-size: 0.65rem !important; color: #475569 !important; }
-    div[data-testid="stCheckbox"] label p { font-size: 0.6rem !important; color: #475569 !important; }
-    div[data-testid="stNumberInput"] > div { max-width: 140px; }
+    /* Streamlit overrides */
+    div[data-testid="stSlider"] { padding-top: 0 !important; padding-bottom: 0 !important; }
+    div[data-testid="stSlider"] label p { font-size: 0.6rem !important; color: #475569 !important; }
+    div[data-testid="stNumberInput"] label p { font-size: 0.6rem !important; color: #475569 !important; }
+    div[data-testid="stNumberInput"] { margin-bottom: 0.2rem; }
+    div[data-testid="stNumberInput"] > div { max-width: 120px; }
+    
+    /* Smaller button */
+    div[data-testid="stButton"] button {
+        font-size: 0.6rem !important; padding: 0.3rem 0.6rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA - Modo Energy German BESS Forecasts (COD 2027)
+# DATA
 # ============================================================================
 REVENUE = {
     'year': list(range(2027, 2037)),
@@ -132,34 +145,25 @@ REVENUE = {
 }
 
 EURIBOR = 2.25
-TENOR = 7  # Fixed 7-year tenor (standard for German tolls)
+TENOR = 7
 
 # ============================================================================
-# LINEAR FINANCING RELATIONSHIPS
+# FINANCING FORMULAS
 # ============================================================================
 def get_gearing(toll_pct):
-    """Gearing = 45% + (toll_pct × 0.25) → 45% to 70%"""
     return 45 + toll_pct * 0.25
 
 def get_dscr(toll_pct):
-    """DSCR = 2.00 - (toll_pct × 0.008) → 2.00x to 1.20x"""
     return 2.00 - toll_pct * 0.008
 
 def get_margin(toll_pct):
-    """Margin = 280 - (toll_pct × 0.80) bps → 280bps to 200bps"""
     return 280 - toll_pct * 0.80
 
 def get_hurdle(toll_pct):
-    """Hurdle rate by risk profile"""
     if toll_pct >= 80: return 10.0
     elif toll_pct >= 50: return 12.0
     elif toll_pct >= 20: return 14.0
     else: return 16.0
-
-def get_tier_label(toll_pct):
-    if toll_pct >= 80: return "Contracted"
-    elif toll_pct >= 40: return "Partly contracted"
-    else: return "Merchant"
 
 # ============================================================================
 # FINANCIAL MODEL
@@ -168,14 +172,13 @@ def get_tier_label(toll_pct):
 def calculate(capex, opex, toll_pct, toll_level):
     gearing = get_gearing(toll_pct)
     dscr_target = get_dscr(toll_pct)
-    margin = get_margin(toll_pct)
-    rate = (EURIBOR + margin / 100) / 100
+    rate = (EURIBOR + get_margin(toll_pct) / 100) / 100
     
     n = len(REVENUE['year'])
     deg = 0.025
     df = [(1 - deg) ** i for i in range(n)]
-    
     tf = toll_pct / 100
+    
     low = [toll_level * tf + REVENUE['low'][i] * df[i] * (1 - tf) for i in range(n)]
     base = [toll_level * tf + REVENUE['base'][i] * df[i] * (1 - tf) for i in range(n)]
     high = [toll_level * tf + REVENUE['high'][i] * df[i] * (1 - tf) for i in range(n)]
@@ -221,12 +224,17 @@ def calculate(capex, opex, toll_pct, toll_level):
     }
 
 def find_min_coverage(capex, opex, toll_level):
-    """Find minimum toll coverage % for feasible financing"""
     for t in range(0, 101):
         r = calculate(capex, opex, t, toll_level)
         if r and r['feasible']:
             return t
-    return 100
+    return None  # Not feasible at any coverage
+
+# ============================================================================
+# INITIALIZE SESSION STATE
+# ============================================================================
+if 'toll_pct' not in st.session_state:
+    st.session_state.toll_pct = 80
 
 # ============================================================================
 # HEADER
@@ -234,74 +242,66 @@ def find_min_coverage(capex, opex, toll_level):
 st.markdown('<div class="header-row"><div class="main-title">Battery Toll Calculator</div><div class="brand-text">Modo Energy</div></div>', unsafe_allow_html=True)
 
 # ============================================================================
-# LAYOUT
+# MAIN LAYOUT
 # ============================================================================
-left, right = st.columns([1, 1.1], gap="medium")
+left, right = st.columns([1, 1], gap="medium")
 
 with left:
     st.markdown('<div class="section-card"><div class="section-title">Structure</div>', unsafe_allow_html=True)
     
     toll_level = st.number_input("Toll Level (€k/MW/yr)", min_value=80, max_value=120, value=100, step=5)
-    toll_pct = st.slider("Toll Coverage %", 0, 100, 80)
     
-    # Derived gearing bar
+    toll_pct = st.slider("Toll Coverage %", 0, 100, st.session_state.toll_pct, key="toll_slider")
+    st.session_state.toll_pct = toll_pct
+    
+    # Find minimum button - inline with result
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        if st.button("Find minimum viable", use_container_width=True):
+            min_cov = find_min_coverage(600, 7, toll_level)
+            if min_cov is not None:
+                st.session_state.toll_pct = min_cov
+                st.rerun()
+    with col2:
+        min_cov = find_min_coverage(600, 7, toll_level)
+        if min_cov is not None:
+            st.markdown(f"<div style='text-align:center; padding-top:5px;'><span style='font-size:0.7rem; color:#1d4ed8; font-weight:600;'>→ {min_cov}%</span></div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div style='text-align:center; padding-top:5px;'><span style='font-size:0.6rem; color:#dc2626;'>Not viable</span></div>", unsafe_allow_html=True)
+    
+    # Gearing bar
     gearing = get_gearing(toll_pct)
-    bar_pct = (gearing - 45) / 25 * 100  # Scale 45-70% to 0-100%
+    bar_pct = (gearing - 45) / 25 * 100
     
     st.markdown(f'''
-    <div class="gearing-container">
-        <div class="gearing-label">Gearing (derived)</div>
+    <div class="gearing-row">
+        <span class="gearing-label">Gearing</span>
         <div class="gearing-bar-bg">
-            <div class="gearing-bar-fill" style="width: {min(bar_pct, 100)}%;">
+            <div class="gearing-bar-fill" style="width: {bar_pct}%;">
                 <span class="gearing-value">{gearing:.0f}%</span>
             </div>
         </div>
-        <div class="gearing-scale"><span>45%</span><span>57%</span><span>70%</span></div>
     </div>
     ''', unsafe_allow_html=True)
     
-    # Optimiser
-    if st.button("Find minimum viable coverage", use_container_width=True):
-        optimal = find_min_coverage(600, 7, toll_level)
-        st.session_state['min_coverage'] = optimal
-        st.session_state['min_toll_level'] = toll_level
-    
-    if 'min_coverage' in st.session_state:
-        st.markdown(f'''
-        <div class="optimal-box">
-            <div class="optimal-label">Minimum at €{st.session_state['min_toll_level']}k toll</div>
-            <div class="optimal-value">{st.session_state['min_coverage']}%</div>
-        </div>
-        ''', unsafe_allow_html=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Project
-    st.markdown('<div class="section-card"><div class="section-title">Project</div>', unsafe_allow_html=True)
-    p1, p2 = st.columns(2)
-    with p1: capex = st.number_input("CapEx (€k/MW)", 300, 1000, 600, 25)
-    with p2: opex = st.number_input("OpEx (€k/yr)", 0, 30, 7, 1)
-    st.caption("COD 2027 · 2.5% degradation · 7-year tenor")
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Financing terms
-    st.markdown('<div class="section-card"><div class="section-title">Financing Terms</div>', unsafe_allow_html=True)
-    
+    # Compact financing terms
     dscr_target = get_dscr(toll_pct)
     margin = get_margin(toll_pct)
     rate = EURIBOR + margin / 100
-    tier = get_tier_label(toll_pct)
     
     st.markdown(f'''
-    <div class="terms-row">
-        <div class="term-item"><div class="term-value">{dscr_target:.2f}x</div><div class="term-label">DSCR</div></div>
-        <div class="term-item"><div class="term-value">{rate:.2f}%</div><div class="term-label">Rate</div></div>
-        <div class="term-item"><div class="term-value">7yr</div><div class="term-label">Tenor</div></div>
-        <div class="term-item"><div class="term-value">{gearing:.0f}%</div><div class="term-label">Gearing</div></div>
+    <div class="terms-compact">
+        <div class="term-chip"><strong>{dscr_target:.2f}x</strong> DSCR</div>
+        <div class="term-chip"><strong>{rate:.1f}%</strong> Rate</div>
+        <div class="term-chip"><strong>7yr</strong> Tenor</div>
     </div>
     ''', unsafe_allow_html=True)
-    st.caption(f"{tier}")
+    
     st.markdown('</div>', unsafe_allow_html=True)
+
+# Get project params (use defaults for now, shown at bottom)
+capex = 600
+opex = 7
 
 # Calculate
 result = calculate(capex, opex, toll_pct, toll_level)
@@ -330,7 +330,7 @@ with right:
         <div class="{debt_class}">
             <div class="result-header">
                 <div>
-                    <div class="result-label">Debt Sizing (Low Case DSCR)</div>
+                    <div class="result-label">Debt (Low Case DSCR)</div>
                     <div class="result-value">{min_dscr:.2f}x</div>
                     <div class="result-detail">vs {dscr_target:.2f}x target ({dscr_sign}{dscr_margin:.2f}x)</div>
                 </div>
@@ -371,11 +371,11 @@ with right:
         st.markdown(f'''
         <div class="scenario-row">
             <div class="scenario-box {get_cls(low_irr, hurdle)}">
-                <div class="scenario-label">Low Case IRR</div>
+                <div class="scenario-label">Low Case</div>
                 <div class="scenario-value {get_cls(low_irr, hurdle)}">{low_irr:.1f}%</div>
             </div>
             <div class="scenario-box {get_cls(high_irr, hurdle)}">
-                <div class="scenario-label">High Case IRR</div>
+                <div class="scenario-label">High Case</div>
                 <div class="scenario-value {get_cls(high_irr, hurdle)}">{high_irr:.1f}%</div>
             </div>
         </div>
@@ -384,16 +384,26 @@ with right:
         # Metrics
         st.markdown(f'''
         <div class="metrics-grid">
-            <div class="metric-box"><div class="metric-value">{result['unlev_irr']:.1f}%</div><div class="metric-label">Unlev IRR</div></div>
+            <div class="metric-box"><div class="metric-value">{result['unlev_irr']:.1f}%</div><div class="metric-label">Unlev</div></div>
             <div class="metric-box"><div class="metric-value">{result['gearing']:.0f}%</div><div class="metric-label">Gearing</div></div>
             <div class="metric-box"><div class="metric-value">{result['debt']:.0f}k</div><div class="metric-label">Debt</div></div>
             <div class="metric-box"><div class="metric-value">{result['equity']:.0f}k</div><div class="metric-label">Equity</div></div>
         </div>
         ''', unsafe_allow_html=True)
-    else:
-        st.error("Unable to calculate. Check inputs.")
     
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Footer
-st.markdown('<div class="footer">2hr duration · German BESS · Modo forecasts · Educational only</div>', unsafe_allow_html=True)
+# ============================================================================
+# PROJECT SETTINGS (bottom, less prominent)
+# ============================================================================
+st.markdown('''
+<div class="project-row">
+    <span class="project-label">Project</span>
+    <span style="font-size: 0.6rem; color: #475569;">CapEx €600k/MW · OpEx €7k/yr · COD 2027</span>
+</div>
+''', unsafe_allow_html=True)
+
+# ============================================================================
+# FOOTER
+# ============================================================================
+st.markdown('<div class="footer">2hr · 1.5 cycle · 7yr tenor · 2.5% degradation · Modo forecasts · Educational only</div>', unsafe_allow_html=True)
