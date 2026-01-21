@@ -1,11 +1,17 @@
 """
-Battery Toll Calculator v16
+Battery Toll Calculator v17 FINAL
 Modo Energy - German BESS
 
-- 10-year equity IRR (7yr toll + 3yr merchant tail)
-- No degradation applied (already in Modo forecasts)
+AGREED SPECIFICATIONS:
 - COD 2027
-- Fixed methodology dropdown styling
+- 7-year toll + debt tenor
+- 10-year equity IRR (includes 3-year merchant tail)
+- No degradation applied (already in Modo forecasts)
+- €625k CapEx (€530k base + €95k BKZ mid-range)
+- €10k OpEx (conservative)
+- Continuous gearing: 45% → 80%
+- DSCR tested on low case
+- Emphasise IRR spread to show risk/reward trade-off
 """
 
 import streamlit as st
@@ -17,15 +23,15 @@ st.set_page_config(page_title="Battery Toll Calculator | Modo Energy", layout="w
 # ============================================================================
 # FIXED ASSUMPTIONS
 # ============================================================================
-CAPEX = 625  # €k/MW (including BKZ)
-OPEX = 7     # €k/MW/yr
-EURIBOR = 2.25  # %
-TOLL_TENOR = 7    # years (toll and debt)
-PROJECT_LIFE = 10  # years (for equity IRR - includes merchant tail)
-DURATION = 2  # hours
-CYCLES = 1.5  # per day
+CAPEX = 625      # €k/MW (€530k base + €95k BKZ)
+OPEX = 10        # €k/MW/yr (conservative)
+EURIBOR = 2.25   # %
+TOLL_TENOR = 7   # years (toll and debt)
+PROJECT_LIFE = 10  # years (equity IRR horizon)
+DURATION = 2     # hours
+CYCLES = 1.5     # per day
 
-# Revenue forecasts (€k/MW/yr) - Modo Energy German BESS
+# Revenue forecasts (€k/MW/yr) - Modo Energy German BESS COD 2027
 # ALREADY INCLUDE DEGRADATION - do not apply again
 REVENUE_DATA = {
     'low':  [94, 76, 72, 69, 68, 68, 70, 67, 67, 69],
@@ -118,9 +124,13 @@ st.markdown("""
         align-self: flex-start; margin-top: 0.2rem;
     }
     
-    .result-scenarios {
+    /* IRR range display */
+    .irr-range {
         font-size: 0.7rem; opacity: 0.85; margin-top: 0.5rem;
         padding-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.2);
+    }
+    .irr-spread {
+        font-size: 0.6rem; opacity: 0.75; margin-top: 0.2rem;
     }
     
     .footer { 
@@ -153,7 +163,7 @@ st.markdown("""
         border-radius: 0 !important;
     }
     
-    /* Expander styling - fixed */
+    /* Expander styling */
     div[data-testid="stExpander"] {
         border: 1px solid #e2e8f0 !important;
         border-radius: 8px !important;
@@ -208,7 +218,7 @@ st.markdown("""
 # FINANCING FORMULAS
 # ============================================================================
 def get_gearing(toll_pct: float) -> float:
-    """Gearing: 45% at 0% toll → 80% at 100% toll"""
+    """Gearing: 45% at 0% toll → 80% at 100% toll (continuous)"""
     return 45 + toll_pct * 0.35
 
 def get_dscr_target(toll_pct: float) -> float:
@@ -262,10 +272,8 @@ def calculate_project(toll_pct: float, toll_price: float) -> dict:
         revenue = []
         for i in range(PROJECT_LIFE):
             if i < TOLL_TENOR:
-                # During toll: blend of toll and merchant
                 year_rev = toll_price * toll_fraction + merchant_forecast[i] * (1 - toll_fraction)
             else:
-                # After toll expires: 100% merchant
                 year_rev = merchant_forecast[i]
             revenue.append(year_rev)
         return revenue
@@ -286,10 +294,7 @@ def calculate_project(toll_pct: float, toll_price: float) -> dict:
     
     def calculate_scenario(revenue_series: list) -> dict:
         """Calculate IRR and DSCR for a scenario"""
-        # Net cash flow = Revenue - OpEx
         net_cash_flow = [revenue_series[i] * 1000 - OPEX * 1000 for i in range(PROJECT_LIFE)]
-        
-        # Equity cash flow = NCF - Debt Service
         equity_cash_flow = [net_cash_flow[i] - debt_service[i] for i in range(PROJECT_LIFE)]
         
         # DSCR only during debt period (years 1-7)
@@ -299,7 +304,7 @@ def calculate_project(toll_pct: float, toll_price: float) -> dict:
                 dscr_values.append(net_cash_flow[i] / debt_service[i])
         min_dscr = min(dscr_values) if dscr_values else 99.0
         
-        # Equity IRR over 10 years (includes merchant tail)
+        # Equity IRR over 10 years
         try:
             irr = npf.irr([-equity] + equity_cash_flow) * 100
             if np.isnan(irr) or irr < -50 or irr > 200:
@@ -316,6 +321,9 @@ def calculate_project(toll_pct: float, toll_price: float) -> dict:
     # Debt feasibility: DSCR vs covenant in LOW case
     debt_feasible = low_result['min_dscr'] >= dscr_target
     
+    # IRR spread
+    irr_spread = high_result['irr'] - low_result['irr']
+    
     return {
         'gearing': gearing,
         'debt': debt / 1000,
@@ -327,6 +335,7 @@ def calculate_project(toll_pct: float, toll_price: float) -> dict:
         'low': low_result,
         'base': base_result,
         'high': high_result,
+        'irr_spread': irr_spread,
     }
 
 def find_minimum_viable_coverage(toll_price: float) -> int | None:
@@ -364,7 +373,6 @@ left, right = st.columns([1, 1.1], gap="large")
 with left:
     st.markdown('<div class="section-label">Structure</div>', unsafe_allow_html=True)
     
-    # Toll price
     toll_price = st.number_input(
         "Toll Price (€k/MW/yr)", 
         min_value=80, 
@@ -374,7 +382,6 @@ with left:
         key="toll_price"
     )
     
-    # Min viable coverage
     min_cov = find_minimum_viable_coverage(toll_price)
     if min_cov is not None:
         min_text = f'Min viable: <strong>{min_cov}%</strong>'
@@ -396,10 +403,8 @@ with left:
         label_visibility="collapsed"
     )
     
-    # Calculate
     result = calculate_project(toll_pct, toll_price)
     
-    # Gearing bar
     gearing = result['gearing']
     bar_pct = (gearing - 45) / 35 * 100
     
@@ -414,7 +419,6 @@ with left:
     </div>
     ''', unsafe_allow_html=True)
     
-    # Debt/Equity
     st.markdown(f'''
     <div class="capital-row">
         <span>€{result['debt']:.0f}k debt</span>
@@ -422,7 +426,6 @@ with left:
     </div>
     ''', unsafe_allow_html=True)
     
-    # Terms
     st.markdown(f'''
     <div class="terms-row">
         <span class="term-chip"><strong>{result['dscr_target']:.2f}x</strong> DSCR</span>
@@ -443,6 +446,7 @@ with right:
     high_irr = result['high']['irr']
     min_dscr = result['low']['min_dscr']
     dscr_target = result['dscr_target']
+    irr_spread = result['irr_spread']
     
     # DEBT card
     dscr_margin = min_dscr - dscr_target
@@ -486,8 +490,11 @@ with right:
             </div>
             <div class="result-badge">{eq_badge}</div>
         </div>
-        <div class="result-scenarios">
+        <div class="irr-range">
             {low_irr:.1f}% low · {high_irr:.1f}% high
+        </div>
+        <div class="irr-spread">
+            {irr_spread:.0f}pp spread — {'higher merchant risk' if irr_spread > 20 else 'moderate risk' if irr_spread > 10 else 'low volatility'}
         </div>
     </div>
     ''', unsafe_allow_html=True)
