@@ -1,12 +1,12 @@
 """
-Battery Toll Calculator v9.0
+Battery Toll Calculator v10
 Modo Energy - German BESS
 
-Refined UI:
-- Button moves slider to minimum viable coverage
-- Balanced two-column layout
-- Project settings at bottom
-- Compact financing terms
+Final UI:
+- Find minimum button next to toll level
+- Minimum coverage shown on slider
+- Project inputs bottom-right
+- Larger result cards
 """
 
 import streamlit as st
@@ -27,7 +27,7 @@ st.markdown("""
     }
     
     #MainMenu, footer, header {visibility: hidden;}
-    .block-container {padding: 1rem 1.5rem 0.5rem 1.5rem; max-width: 900px;}
+    .block-container {padding: 1rem 1.5rem 0.5rem 1.5rem; max-width: 920px;}
     
     .header-row {
         display: flex; justify-content: space-between; align-items: center;
@@ -37,99 +37,114 @@ st.markdown("""
     .brand-text { font-size: 0.75rem; color: #1a1a2e; font-weight: 600; }
     
     .section-card {
-        background: #fff; border-radius: 8px; padding: 0.6rem 0.85rem;
+        background: #fff; border-radius: 8px; padding: 0.7rem 0.9rem;
         border: 1px solid #e2e8f0; margin-bottom: 0.4rem;
     }
     .section-title {
         font-size: 0.55rem; font-weight: 600; color: #64748b;
-        margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em;
+        margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
     }
+    
+    /* Minimum indicator below slider */
+    .min-indicator {
+        font-size: 0.55rem; color: #3b82f6; margin-top: -0.3rem; margin-bottom: 0.3rem;
+    }
+    .min-indicator span { font-weight: 600; }
     
     /* Compact gearing bar */
     .gearing-row {
-        display: flex; align-items: center; gap: 0.5rem; margin: 0.3rem 0;
+        display: flex; align-items: center; gap: 0.5rem; margin: 0.4rem 0;
     }
     .gearing-label { font-size: 0.6rem; color: #64748b; min-width: 50px; }
     .gearing-bar-bg {
-        flex: 1; background: #e2e8f0; border-radius: 4px; height: 18px;
+        flex: 1; background: #e2e8f0; border-radius: 4px; height: 20px;
         position: relative; overflow: hidden;
     }
     .gearing-bar-fill {
         background: linear-gradient(90deg, #3b82f6 0%, #1d4ed8 100%);
         height: 100%; border-radius: 4px;
-        display: flex; align-items: center; justify-content: flex-end; padding-right: 6px;
+        display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
     }
-    .gearing-value { font-size: 0.65rem; font-weight: 600; color: white; }
+    .gearing-value { font-size: 0.7rem; font-weight: 600; color: white; }
     
     /* Compact terms row */
     .terms-compact {
-        display: flex; gap: 0.5rem; margin-top: 0.3rem;
+        display: flex; gap: 0.5rem; margin-top: 0.4rem;
     }
     .term-chip {
-        background: #f1f5f9; border-radius: 4px; padding: 0.25rem 0.5rem;
+        background: #f1f5f9; border-radius: 4px; padding: 0.3rem 0.6rem;
         font-size: 0.6rem; color: #475569;
     }
     .term-chip strong { color: #1e293b; }
     
-    /* Result cards */
+    /* LARGER Result cards */
     .result-pass {
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        border-radius: 8px; padding: 0.55rem 0.75rem; color: white; margin-bottom: 0.35rem;
+        border-radius: 10px; padding: 0.8rem 1rem; color: white; margin-bottom: 0.5rem;
     }
     .result-warn {
         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-        border-radius: 8px; padding: 0.55rem 0.75rem; color: white; margin-bottom: 0.35rem;
+        border-radius: 10px; padding: 0.8rem 1rem; color: white; margin-bottom: 0.5rem;
     }
     .result-fail {
         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        border-radius: 8px; padding: 0.55rem 0.75rem; color: white; margin-bottom: 0.35rem;
+        border-radius: 10px; padding: 0.8rem 1rem; color: white; margin-bottom: 0.5rem;
     }
     .result-header { display: flex; justify-content: space-between; align-items: center; }
-    .result-label { font-size: 0.5rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.03em; }
-    .result-value { font-size: 1.2rem; font-weight: 700; line-height: 1.1; }
-    .result-detail { font-size: 0.6rem; opacity: 0.9; }
-    .result-badge { font-size: 0.45rem; font-weight: 600; padding: 2px 5px; border-radius: 3px; background: rgba(255,255,255,0.2); }
+    .result-label { font-size: 0.6rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.03em; }
+    .result-value { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+    .result-detail { font-size: 0.7rem; opacity: 0.9; margin-top: 0.1rem; }
+    .result-badge { font-size: 0.5rem; font-weight: 600; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.2); }
     
     /* Scenarios */
-    .scenario-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; margin-bottom: 0.3rem; }
-    .scenario-box { border-radius: 5px; padding: 0.3rem 0.4rem; text-align: center; }
+    .scenario-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; margin-bottom: 0.4rem; }
+    .scenario-box { border-radius: 6px; padding: 0.4rem 0.5rem; text-align: center; }
     .scenario-box.green { background: #ecfdf5; border: 1px solid #a7f3d0; }
     .scenario-box.amber { background: #fffbeb; border: 1px solid #fde68a; }
     .scenario-box.red { background: #fef2f2; border: 1px solid #fecaca; }
-    .scenario-label { font-size: 0.5rem; color: #64748b; }
-    .scenario-value { font-size: 0.8rem; font-weight: 600; }
+    .scenario-label { font-size: 0.55rem; color: #64748b; }
+    .scenario-value { font-size: 0.9rem; font-weight: 600; }
     .scenario-value.green { color: #059669; }
     .scenario-value.amber { color: #d97706; }
     .scenario-value.red { color: #dc2626; }
     
     /* Metrics */
-    .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.25rem; }
-    .metric-box { background: #f8fafc; border-radius: 4px; padding: 0.3rem; text-align: center; border: 1px solid #e2e8f0; }
-    .metric-value { font-size: 0.75rem; font-weight: 700; color: #1e293b; }
-    .metric-label { font-size: 0.4rem; color: #64748b; text-transform: uppercase; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.3rem; }
+    .metric-box { background: #f8fafc; border-radius: 5px; padding: 0.35rem 0.4rem; text-align: center; border: 1px solid #e2e8f0; }
+    .metric-value { font-size: 0.8rem; font-weight: 700; color: #1e293b; }
+    .metric-label { font-size: 0.45rem; color: #64748b; text-transform: uppercase; }
     
-    /* Project row */
-    .project-row {
-        display: flex; align-items: center; gap: 1rem;
-        padding: 0.4rem 0; border-top: 1px solid #e2e8f0; margin-top: 0.3rem;
+    /* Project section */
+    .project-card {
+        background: #f8fafc; border-radius: 6px; padding: 0.5rem 0.7rem;
+        border: 1px solid #e2e8f0; margin-top: 0.4rem;
     }
-    .project-label { font-size: 0.55rem; color: #64748b; text-transform: uppercase; font-weight: 600; }
+    .project-title {
+        font-size: 0.5rem; font-weight: 600; color: #64748b;
+        text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem;
+    }
     
     .footer { 
         text-align: center; font-size: 0.5rem; color: #94a3b8; 
-        margin-top: 0.4rem; padding-top: 0.3rem; border-top: 1px solid #f1f5f9; 
+        margin-top: 0.5rem; padding-top: 0.4rem; border-top: 1px solid #f1f5f9; 
     }
     
     /* Streamlit overrides */
     div[data-testid="stSlider"] { padding-top: 0 !important; padding-bottom: 0 !important; }
     div[data-testid="stSlider"] label p { font-size: 0.6rem !important; color: #475569 !important; }
     div[data-testid="stNumberInput"] label p { font-size: 0.6rem !important; color: #475569 !important; }
-    div[data-testid="stNumberInput"] { margin-bottom: 0.2rem; }
-    div[data-testid="stNumberInput"] > div { max-width: 120px; }
+    div[data-testid="stNumberInput"] { margin-bottom: 0.15rem; }
+    div[data-testid="stNumberInput"] > div { max-width: 100px; }
+    div[data-testid="stSelectbox"] > div { max-width: 90px; }
+    div[data-testid="stSelectbox"] label p { font-size: 0.6rem !important; color: #475569 !important; }
     
     /* Smaller button */
     div[data-testid="stButton"] button {
-        font-size: 0.6rem !important; padding: 0.3rem 0.6rem !important;
+        font-size: 0.55rem !important; padding: 0.35rem 0.5rem !important;
+        background-color: #3b82f6 !important; color: white !important;
+    }
+    div[data-testid="stButton"] button:hover {
+        background-color: #2563eb !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -137,11 +152,10 @@ st.markdown("""
 # ============================================================================
 # DATA
 # ============================================================================
-REVENUE = {
-    'year': list(range(2027, 2037)),
-    'low':  [94, 76, 72, 69, 68, 68, 70, 67, 67, 69],
-    'base': [155, 129, 124, 119, 117, 118, 118, 117, 114, 115],
-    'high': [205, 168, 163, 158, 154, 157, 155, 151, 154, 154],
+REVENUE_DATA = {
+    2026: {'low': [142, 94, 76, 72, 69, 68, 68, 70, 67, 67], 'base': [240, 155, 129, 124, 119, 117, 118, 118, 117, 114], 'high': [319, 205, 168, 163, 158, 154, 157, 155, 151, 154]},
+    2027: {'low': [94, 76, 72, 69, 68, 68, 70, 67, 67, 69], 'base': [155, 129, 124, 119, 117, 118, 118, 117, 114, 115], 'high': [205, 168, 163, 158, 154, 157, 155, 151, 154, 154]},
+    2028: {'low': [76, 72, 69, 68, 68, 70, 67, 67, 69, 72], 'base': [129, 124, 119, 117, 118, 118, 117, 114, 115, 119], 'high': [168, 163, 158, 154, 157, 155, 151, 154, 154, 156]},
 }
 
 EURIBOR = 2.25
@@ -169,19 +183,21 @@ def get_hurdle(toll_pct):
 # FINANCIAL MODEL
 # ============================================================================
 @st.cache_data
-def calculate(capex, opex, toll_pct, toll_level):
+def calculate(capex, opex, toll_pct, toll_level, cod):
+    revenue = REVENUE_DATA.get(cod, REVENUE_DATA[2027])
+    
     gearing = get_gearing(toll_pct)
     dscr_target = get_dscr(toll_pct)
     rate = (EURIBOR + get_margin(toll_pct) / 100) / 100
     
-    n = len(REVENUE['year'])
+    n = 10
     deg = 0.025
     df = [(1 - deg) ** i for i in range(n)]
     tf = toll_pct / 100
     
-    low = [toll_level * tf + REVENUE['low'][i] * df[i] * (1 - tf) for i in range(n)]
-    base = [toll_level * tf + REVENUE['base'][i] * df[i] * (1 - tf) for i in range(n)]
-    high = [toll_level * tf + REVENUE['high'][i] * df[i] * (1 - tf) for i in range(n)]
+    low = [toll_level * tf + revenue['low'][i] * df[i] * (1 - tf) for i in range(n)]
+    base = [toll_level * tf + revenue['base'][i] * df[i] * (1 - tf) for i in range(n)]
+    high = [toll_level * tf + revenue['high'][i] * df[i] * (1 - tf) for i in range(n)]
     
     total_capex = capex * 1000
     debt = total_capex * gearing / 100
@@ -223,18 +239,18 @@ def calculate(capex, opex, toll_pct, toll_level):
         'high': high_r,
     }
 
-def find_min_coverage(capex, opex, toll_level):
+def find_min_coverage(capex, opex, toll_level, cod):
     for t in range(0, 101):
-        r = calculate(capex, opex, t, toll_level)
+        r = calculate(capex, opex, t, toll_level, cod)
         if r and r['feasible']:
             return t
-    return None  # Not feasible at any coverage
+    return None
 
 # ============================================================================
-# INITIALIZE SESSION STATE
+# SESSION STATE
 # ============================================================================
-if 'toll_pct' not in st.session_state:
-    st.session_state.toll_pct = 80
+if 'toll_slider_widget' not in st.session_state:
+    st.session_state.toll_slider_widget = 80
 
 # ============================================================================
 # HEADER
@@ -244,30 +260,40 @@ st.markdown('<div class="header-row"><div class="main-title">Battery Toll Calcul
 # ============================================================================
 # MAIN LAYOUT
 # ============================================================================
-left, right = st.columns([1, 1], gap="medium")
+left, right = st.columns([1, 1.15], gap="medium")
+
+# Default project values (will be editable in right column)
+if 'capex' not in st.session_state:
+    st.session_state.capex = 600
+if 'opex' not in st.session_state:
+    st.session_state.opex = 7
+if 'cod' not in st.session_state:
+    st.session_state.cod = 2027
 
 with left:
     st.markdown('<div class="section-card"><div class="section-title">Structure</div>', unsafe_allow_html=True)
     
-    toll_level = st.number_input("Toll Level (€k/MW/yr)", min_value=80, max_value=120, value=100, step=5)
-    
-    toll_pct = st.slider("Toll Coverage %", 0, 100, st.session_state.toll_pct, key="toll_slider")
-    st.session_state.toll_pct = toll_pct
-    
-    # Find minimum button - inline with result
-    col1, col2 = st.columns([2, 1])
+    # Toll level + Find minimum button
+    col1, col2 = st.columns([1, 1])
     with col1:
-        if st.button("Find minimum viable", use_container_width=True):
-            min_cov = find_min_coverage(600, 7, toll_level)
-            if min_cov is not None:
-                st.session_state.toll_pct = min_cov
-                st.rerun()
+        toll_level = st.number_input("Toll Level (€k/MW/yr)", min_value=80, max_value=120, value=100, step=5)
     with col2:
-        min_cov = find_min_coverage(600, 7, toll_level)
-        if min_cov is not None:
-            st.markdown(f"<div style='text-align:center; padding-top:5px;'><span style='font-size:0.7rem; color:#1d4ed8; font-weight:600;'>→ {min_cov}%</span></div>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"<div style='text-align:center; padding-top:5px;'><span style='font-size:0.6rem; color:#dc2626;'>Not viable</span></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 1.6rem;'></div>", unsafe_allow_html=True)  # Spacer to align
+        if st.button("Find minimum ▶", use_container_width=True):
+            min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_level, st.session_state.cod)
+            if min_cov is not None:
+                st.session_state.toll_slider_widget = min_cov
+                st.rerun()
+    
+    # Toll coverage slider
+    toll_pct = st.slider("Toll Coverage %", 0, 100, key="toll_slider_widget")
+    
+    # Show minimum indicator
+    min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_level, st.session_state.cod)
+    if min_cov is not None:
+        st.markdown(f'<div class="min-indicator">Minimum for feasible debt: <span>{min_cov}%</span></div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="min-indicator" style="color:#dc2626;">Not feasible at this toll level</div>', unsafe_allow_html=True)
     
     # Gearing bar
     gearing = get_gearing(toll_pct)
@@ -284,7 +310,7 @@ with left:
     </div>
     ''', unsafe_allow_html=True)
     
-    # Compact financing terms
+    # Financing terms
     dscr_target = get_dscr(toll_pct)
     margin = get_margin(toll_pct)
     rate = EURIBOR + margin / 100
@@ -299,15 +325,11 @@ with left:
     
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Get project params (use defaults for now, shown at bottom)
-capex = 600
-opex = 7
-
-# Calculate
-result = calculate(capex, opex, toll_pct, toll_level)
+# Calculate with current project settings
+result = calculate(st.session_state.capex, st.session_state.opex, toll_pct, toll_level, st.session_state.cod)
 
 # ============================================================================
-# RESULTS
+# RESULTS + PROJECT
 # ============================================================================
 with right:
     st.markdown('<div class="section-card"><div class="section-title">Results</div>', unsafe_allow_html=True)
@@ -392,16 +414,22 @@ with right:
         ''', unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ============================================================================
-# PROJECT SETTINGS (bottom, less prominent)
-# ============================================================================
-st.markdown('''
-<div class="project-row">
-    <span class="project-label">Project</span>
-    <span style="font-size: 0.6rem; color: #475569;">CapEx €600k/MW · OpEx €7k/yr · COD 2027</span>
-</div>
-''', unsafe_allow_html=True)
+    
+    # Project settings
+    st.markdown('<div class="project-card"><div class="project-title">Project</div>', unsafe_allow_html=True)
+    
+    pc1, pc2, pc3 = st.columns(3)
+    with pc1:
+        capex = st.number_input("CapEx (€k)", 300, 1000, st.session_state.capex, 25, key="capex_input")
+        st.session_state.capex = capex
+    with pc2:
+        opex = st.number_input("OpEx (€k/yr)", 0, 30, st.session_state.opex, 1, key="opex_input")
+        st.session_state.opex = opex
+    with pc3:
+        cod = st.selectbox("COD", [2026, 2027, 2028], index=[2026,2027,2028].index(st.session_state.cod), key="cod_input")
+        st.session_state.cod = cod
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
 # FOOTER
