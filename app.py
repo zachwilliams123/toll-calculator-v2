@@ -1,5 +1,5 @@
 """
-Battery Toll Calculator v22
+Battery Toll Calculator v23
 Standard/Custom finance structure modes
 """
 
@@ -64,14 +64,37 @@ st.markdown("""
     div[data-testid="stSelectbox"] label {display: none !important;}
     div[data-testid="stSelectbox"] > div > div {font-size: 14px !important; background: #f8fafc !important; border: 1px solid #e2e8f0 !important; border-radius: 8px !important;}
     
-    /* Expander without arrow */
-    div[data-testid="stExpander"] {border: 1px solid #e2e8f0 !important; border-radius: 8px !important; margin-top: 16px;}
-    div[data-testid="stExpander"] details {border: none !important;}
-    div[data-testid="stExpander"] summary p {font-size: 13px !important; font-weight: 500 !important; color: #475569 !important;}
-    div[data-testid="stExpander"] summary svg {display: none !important;}
-    
-    /* Disabled slider styling */
-    .disabled-slider {opacity: 0.6; pointer-events: none;}
+    /* Custom methodology section */
+    .method-section {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        margin-top: 16px;
+        overflow: hidden;
+    }
+    .method-header {
+        padding: 12px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #475569;
+        cursor: pointer;
+        background: #fff;
+        border: none;
+        width: 100%;
+        text-align: left;
+    }
+    .method-header:hover {
+        background: #f8fafc;
+    }
+    .method-content {
+        padding: 0 16px 16px 16px;
+        font-size: 12px;
+        color: #475569;
+        line-height: 1.6;
+        border-top: 1px solid #f1f5f9;
+    }
+    .method-content strong {
+        color: #1e293b;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -112,6 +135,8 @@ def calculate_project(toll_pct, toll_price, gearing):
 # Session state
 if 'custom_gearing' not in st.session_state:
     st.session_state.custom_gearing = 70
+if 'show_method' not in st.session_state:
+    st.session_state.show_method = False
 
 # Disclaimer & Header
 st.markdown('<div class="disclaimer">Model for educational purposes only. <a href="mailto:zach.williams@modoenergy.com">zach.williams@modoenergy.com</a> for detailed project analysis.</div>', unsafe_allow_html=True)
@@ -132,16 +157,18 @@ with left_col:
     st.markdown('<div class="input-label">Toll Coverage %</div>', unsafe_allow_html=True)
     toll_pct = st.slider("toll", 0, 100, 80, label_visibility="collapsed")
     
-    # Gearing
+    # Calculate auto gearing based on current toll
     auto_gearing = int(round(get_auto_gearing(toll_pct)))
     
+    # Gearing
     st.markdown('<div class="input-label">Gearing %</div>', unsafe_allow_html=True)
     
     if mode == "Standard":
-        gearing = auto_gearing
-        st.slider("gearing", 30, 85, gearing, label_visibility="collapsed", disabled=True, key="gearing_disabled")
+        # Use key that changes with auto_gearing to force re-render
+        gearing = st.slider("gearing", 30, 85, auto_gearing, disabled=True, label_visibility="collapsed", key=f"gearing_std_{auto_gearing}")
+        gearing = auto_gearing  # Ensure we use auto value
     else:
-        gearing = st.slider("gearing", 30, 85, st.session_state.custom_gearing, label_visibility="collapsed", key="gearing_enabled")
+        gearing = st.slider("gearing", 30, 85, st.session_state.custom_gearing, label_visibility="collapsed", key="gearing_custom")
         st.session_state.custom_gearing = gearing
     
     result = calculate_project(toll_pct, toll_price, gearing)
@@ -191,25 +218,32 @@ with right_col:
     </div>
     ''', unsafe_allow_html=True)
 
-with st.expander("Methodology & Assumptions"):
-    st.markdown("""
-**Revenue**  
-Years 1–7: (Toll price × Toll %) + (Modo merchant forecast × (1 − Toll %))  
-Years 8–10: 100% merchant (toll expired, debt repaid)
+# Methodology section using HTML details/summary (no arrow by default in our styling)
+st.markdown('''
+<details class="method-section">
+<summary class="method-header">Methodology & Assumptions</summary>
+<div class="method-content">
 
-**Debt**  
-7-year amortising loan at EURIBOR + 200–280 bps. DSCR covenant tested against Modo low case: 2.0× at 0% toll → 1.2× at 100% toll.
+<p><strong>Revenue</strong><br>
+Years 1–7: (Toll price × Toll %) + (Modo merchant forecast × (1 − Toll %))<br>
+Years 8–10: 100% merchant (toll expired, debt repaid)</p>
 
-**Equity**  
-IRR calculated over 10 years (includes 3-year merchant tail post-toll). Range shows Modo low/high revenue scenarios. Hurdle rate: 10%.
+<p><strong>Debt</strong><br>
+7-year amortising loan at EURIBOR + 200–280 bps. DSCR covenant tested against Modo low case: 2.0× at 0% toll → 1.2× at 100% toll.</p>
 
-**Glossary**  
-**IRR** — Internal Rate of Return. Annualised return on equity.  
-**DSCR** — Debt Service Coverage Ratio. Operating cash flow ÷ debt payments.  
-**Gearing** — Debt as % of total capital.
+<p><strong>Equity</strong><br>
+IRR calculated over 10 years (includes 3-year merchant tail post-toll). Range shows Modo low/high revenue scenarios. Hurdle rate: 10%.</p>
 
----
-€625k/MW CapEx (inc. BKZ) · €10k/MW/yr OpEx · 2hr · 1.5 cycles/day · COD 2027
-    """)
+<p><strong>Glossary</strong><br>
+<strong>IRR</strong> — Internal Rate of Return. Annualised return on equity.<br>
+<strong>DSCR</strong> — Debt Service Coverage Ratio. Operating cash flow ÷ debt payments.<br>
+<strong>Gearing</strong> — Debt as % of total capital.</p>
+
+<hr style="border: none; border-top: 1px solid #e2e8f0; margin: 12px 0;">
+<span style="font-size: 10px; color: #94a3b8;">€625k/MW CapEx (inc. BKZ) · €10k/MW/yr OpEx · 2hr · 1.5 cycles/day · COD 2027</span>
+
+</div>
+</details>
+''', unsafe_allow_html=True)
 
 st.markdown('<div class="footer">2hr · 1.5 cycle · 7yr toll/debt · 10yr equity IRR · COD 2027 · Modo forecasts</div>', unsafe_allow_html=True)
