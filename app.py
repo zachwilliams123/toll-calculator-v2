@@ -126,18 +126,18 @@ st.markdown("""
     div[data-testid="stSelectbox"] > div { max-width: 95px; }
     div[data-testid="stSelectbox"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     
-    /* Subtle button */
+    /* Gray subtle button */
     div[data-testid="stButton"] button {
         font-size: 0.6rem !important; 
-        padding: 0.4rem 0.7rem !important;
-        background-color: transparent !important; 
+        padding: 0.4rem 0.6rem !important;
+        background-color: #f1f5f9 !important; 
         color: #64748b !important;
-        border: 1px solid #cbd5e1 !important;
+        border: 1px solid #e2e8f0 !important;
         border-radius: 6px !important;
     }
     div[data-testid="stButton"] button:hover {
-        background-color: #f1f5f9 !important;
-        border-color: #94a3b8 !important;
+        background-color: #e2e8f0 !important;
+        border-color: #cbd5e1 !important;
         color: #475569 !important;
     }
 </style>
@@ -271,7 +271,7 @@ with left:
         toll_level = st.number_input("Toll Level (€k/MW/yr)", min_value=80, max_value=120, value=100, step=5)
     with col2:
         st.markdown("<div style='height: 1.7rem;'></div>", unsafe_allow_html=True)
-        if st.button("Minimum coverage ▸", use_container_width=True):
+        if st.button("Min coverage", use_container_width=True):
             min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_level, st.session_state.cod)
             if min_cov is not None:
                 st.session_state.toll_slider = min_cov
