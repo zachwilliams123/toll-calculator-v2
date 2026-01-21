@@ -263,7 +263,7 @@ with left:
     # Toll level + subtle find minimum button
     col1, col2 = st.columns([1.2, 1])
     with col1:
-        toll_level = st.number_input("Toll Level (€k/MW/yr)", min_value=80, max_value=120, value=100, step=5)
+        toll_level = st.number_input("Toll Level (€k/MW/yr)", min_value=80, max_value=140, value=100, step=5)
     with col2:
         st.markdown("<div style='height: 1.7rem;'></div>", unsafe_allow_html=True)
         if st.button("Min coverage", use_container_width=True):
