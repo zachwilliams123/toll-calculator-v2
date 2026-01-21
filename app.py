@@ -129,9 +129,6 @@ st.markdown("""
         font-size: 0.7rem; opacity: 0.85; margin-top: 0.5rem;
         padding-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.2);
     }
-    .irr-spread {
-        font-size: 0.6rem; opacity: 0.75; margin-top: 0.2rem;
-    }
     
     .footer { 
         text-align: center; font-size: 0.55rem; color: #94a3b8; 
@@ -169,25 +166,28 @@ st.markdown("""
         border-radius: 8px !important;
         margin-top: 0.5rem;
         background: white;
+        overflow: hidden;
     }
     div[data-testid="stExpander"] details {
         border: none !important;
+        background: white !important;
     }
     div[data-testid="stExpander"] summary {
         padding: 0.6rem 0.8rem !important;
+        background: white !important;
     }
-    div[data-testid="stExpander"] summary p {
+    div[data-testid="stExpander"] summary span p {
         font-size: 0.72rem !important;
         font-weight: 500 !important;
         color: #475569 !important;
         margin: 0 !important;
     }
-    div[data-testid="stExpander"] svg {
-        width: 12px !important;
-        height: 12px !important;
+    div[data-testid="stExpander"] summary svg {
+        width: 14px !important;
+        height: 14px !important;
         color: #64748b !important;
     }
-    div[data-testid="stExpander"] > details > div {
+    div[data-testid="stExpander"] > details > div[data-testid="stExpanderDetails"] {
         padding: 0 0.8rem 0.8rem 0.8rem !important;
         border-top: 1px solid #f1f5f9;
     }
@@ -230,15 +230,8 @@ def get_margin_bps(toll_pct: float) -> float:
     return 280 - toll_pct * 0.80
 
 def get_equity_hurdle(toll_pct: float) -> float:
-    """Equity hurdle: 16% (<20% toll) → 10% (80%+ toll)"""
-    if toll_pct >= 80:
-        return 10.0
-    elif toll_pct >= 50:
-        return 12.0
-    elif toll_pct >= 20:
-        return 14.0
-    else:
-        return 16.0
+    """Equity hurdle: 10% across the board"""
+    return 10.0
 
 # ============================================================================
 # FINANCIAL MODEL
@@ -470,12 +463,12 @@ with right:
     </div>
     ''', unsafe_allow_html=True)
     
-    # EQUITY card
+    # EQUITY card - show range as main display
     irr_delta = base_irr - hurdle
-    if irr_delta >= 0:
+    if low_irr >= hurdle:
         eq_class, eq_badge = "pass", "MEETS HURDLE"
-    elif irr_delta >= -3:
-        eq_class, eq_badge = "warn", "NEAR HURDLE"
+    elif base_irr >= hurdle:
+        eq_class, eq_badge = "warn", "BASE MEETS HURDLE"
     else:
         eq_class, eq_badge = "fail", "BELOW HURDLE"
     
@@ -485,16 +478,13 @@ with right:
         <div class="result-header">
             <div>
                 <div class="result-label">Equity IRR ({PROJECT_LIFE}yr)</div>
-                <div class="result-value">{base_irr:.1f}%</div>
-                <div class="result-detail">vs {hurdle:.0f}% hurdle ({sign}{irr_delta:.1f}%)</div>
+                <div class="result-value">{low_irr:.0f}% – {high_irr:.0f}%</div>
+                <div class="result-detail">vs {hurdle:.0f}% hurdle</div>
             </div>
             <div class="result-badge">{eq_badge}</div>
         </div>
         <div class="irr-range">
-            {low_irr:.1f}% low · {high_irr:.1f}% high
-        </div>
-        <div class="irr-spread">
-            {irr_spread:.0f}pp spread — {'higher merchant risk' if irr_spread > 20 else 'moderate risk' if irr_spread > 10 else 'low volatility'}
+            Base case: {base_irr:.1f}%
         </div>
     </div>
     ''', unsafe_allow_html=True)
@@ -517,7 +507,7 @@ Sized at <strong>45–80% gearing</strong> (scales with toll coverage). 7-year a
 
 <div class="method-title">Equity</div>
 <div class="method-section">
-IRR calculated over <strong>10 years</strong> (includes 3-year merchant tail post-toll). Modo base case revenue. Hurdle rates: <strong>10%</strong> (≥80% toll), <strong>12%</strong> (50–79%), <strong>14%</strong> (20–49%), <strong>16%</strong> (&lt;20%).
+IRR calculated over <strong>10 years</strong> (includes 3-year merchant tail post-toll). Range shows Modo low/high revenue scenarios. Hurdle rate: <strong>10%</strong>.
 </div>
 
 <div class="method-title">Glossary</div>
