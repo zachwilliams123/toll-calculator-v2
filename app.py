@@ -119,7 +119,7 @@ st.markdown("""
     div[data-testid="stNumberInput"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     div[data-testid="stNumberInput"] { margin-bottom: 0.15rem; }
     div[data-testid="stNumberInput"] > div { max-width: 130px; }
-    div[data-testid="stSelectbox"] > div { max-width: 110px; }
+    div[data-testid="stSelectbox"] > div { min-width: 85px; }
     div[data-testid="stSelectbox"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     
     /* Gray subtle button */
@@ -382,7 +382,7 @@ with right:
     # Project inputs - plain
     st.markdown('<div class="project-inputs">', unsafe_allow_html=True)
     
-    pc1, pc2, pc3 = st.columns([1.1, 1, 0.9])
+    pc1, pc2, pc3 = st.columns([1.1, 1, 1])
     with pc1:
         capex = st.number_input("CapEx (€k)", 300, 1000, st.session_state.capex, 25, key="capex_input")
         st.session_state.capex = capex
