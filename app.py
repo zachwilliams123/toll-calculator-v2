@@ -1,12 +1,12 @@
 """
-Battery Toll Calculator v10
+Battery Toll Calculator v11
 Modo Energy - German BESS
 
-Final UI:
-- Find minimum button next to toll level
-- Minimum coverage shown on slider
-- Project inputs bottom-right
-- Larger result cards
+Clean layout:
+- Subtle find minimum button
+- Combined result card with debt/equity separation
+- Debt/equity under gearing bar
+- Unlevered at bottom
 """
 
 import streamlit as st
@@ -27,124 +27,138 @@ st.markdown("""
     }
     
     #MainMenu, footer, header {visibility: hidden;}
-    .block-container {padding: 1rem 1.5rem 0.5rem 1.5rem; max-width: 920px;}
+    .block-container {padding: 1rem 2rem 0.5rem 2rem; max-width: 950px;}
     
     .header-row {
         display: flex; justify-content: space-between; align-items: center;
-        margin-bottom: 0.5rem; padding-bottom: 0.4rem; border-bottom: 2px solid #e2e8f0;
+        margin-bottom: 0.6rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e2e8f0;
     }
-    .main-title { font-size: 1.25rem; font-weight: 700; color: #1a1a2e; }
-    .brand-text { font-size: 0.75rem; color: #1a1a2e; font-weight: 600; }
+    .main-title { font-size: 1.3rem; font-weight: 700; color: #1a1a2e; }
+    .brand-text { font-size: 0.8rem; color: #1a1a2e; font-weight: 600; }
     
     .section-card {
-        background: #fff; border-radius: 8px; padding: 0.7rem 0.9rem;
-        border: 1px solid #e2e8f0; margin-bottom: 0.4rem;
+        background: #fff; border-radius: 10px; padding: 0.9rem 1.1rem;
+        border: 1px solid #e2e8f0; margin-bottom: 0.5rem;
     }
     .section-title {
-        font-size: 0.55rem; font-weight: 600; color: #64748b;
-        margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
+        font-size: 0.6rem; font-weight: 600; color: #64748b;
+        margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em;
     }
     
-    /* Minimum indicator below slider */
+    /* Min indicator */
     .min-indicator {
-        font-size: 0.55rem; color: #3b82f6; margin-top: -0.3rem; margin-bottom: 0.3rem;
+        font-size: 0.6rem; color: #64748b; margin-top: -0.2rem; margin-bottom: 0.5rem;
     }
-    .min-indicator span { font-weight: 600; }
+    .min-indicator span { color: #3b82f6; font-weight: 600; }
     
-    /* Compact gearing bar */
+    /* Gearing bar */
     .gearing-row {
-        display: flex; align-items: center; gap: 0.5rem; margin: 0.4rem 0;
+        display: flex; align-items: center; gap: 0.6rem; margin: 0.5rem 0 0.3rem 0;
     }
-    .gearing-label { font-size: 0.6rem; color: #64748b; min-width: 50px; }
+    .gearing-label { font-size: 0.65rem; color: #64748b; min-width: 50px; }
     .gearing-bar-bg {
-        flex: 1; background: #e2e8f0; border-radius: 4px; height: 20px;
+        flex: 1; background: #e2e8f0; border-radius: 5px; height: 22px;
         position: relative; overflow: hidden;
     }
     .gearing-bar-fill {
         background: linear-gradient(90deg, #3b82f6 0%, #1d4ed8 100%);
-        height: 100%; border-radius: 4px;
-        display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
+        height: 100%; border-radius: 5px;
+        display: flex; align-items: center; justify-content: flex-end; padding-right: 10px;
     }
-    .gearing-value { font-size: 0.7rem; font-weight: 600; color: white; }
+    .gearing-value { font-size: 0.75rem; font-weight: 600; color: white; }
     
-    /* Compact terms row */
-    .terms-compact {
-        display: flex; gap: 0.5rem; margin-top: 0.4rem;
+    /* Debt/Equity under gearing */
+    .capital-row {
+        display: flex; justify-content: flex-end; gap: 1rem;
+        font-size: 0.6rem; color: #64748b; margin-bottom: 0.5rem;
+    }
+    .capital-row span { font-weight: 500; }
+    
+    /* Terms row */
+    .terms-row {
+        display: flex; gap: 0.6rem; padding-top: 0.5rem;
+        border-top: 1px solid #f1f5f9; margin-top: 0.3rem;
     }
     .term-chip {
-        background: #f1f5f9; border-radius: 4px; padding: 0.3rem 0.6rem;
         font-size: 0.6rem; color: #475569;
     }
     .term-chip strong { color: #1e293b; }
     
-    /* LARGER Result cards */
-    .result-pass {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        border-radius: 10px; padding: 0.8rem 1rem; color: white; margin-bottom: 0.5rem;
+    /* Result card - combined */
+    .result-card {
+        background: #fff; border-radius: 10px;
+        border: 1px solid #e2e8f0; overflow: hidden;
+        margin-bottom: 0.5rem;
     }
-    .result-warn {
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-        border-radius: 10px; padding: 0.8rem 1rem; color: white; margin-bottom: 0.5rem;
+    
+    .result-section {
+        padding: 0.9rem 1rem;
     }
-    .result-fail {
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        border-radius: 10px; padding: 0.8rem 1rem; color: white; margin-bottom: 0.5rem;
+    .result-section.pass { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; }
+    .result-section.warn { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; }
+    .result-section.fail { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; }
+    
+    .result-header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .result-label { font-size: 0.55rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.2rem; }
+    .result-value { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
+    .result-detail { font-size: 0.7rem; opacity: 0.9; margin-top: 0.15rem; }
+    .result-badge { 
+        font-size: 0.5rem; font-weight: 600; padding: 4px 10px; 
+        border-radius: 4px; background: rgba(255,255,255,0.2); 
+        align-self: flex-start; margin-top: 0.2rem;
     }
-    .result-header { display: flex; justify-content: space-between; align-items: center; }
-    .result-label { font-size: 0.6rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.03em; }
-    .result-value { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
-    .result-detail { font-size: 0.7rem; opacity: 0.9; margin-top: 0.1rem; }
-    .result-badge { font-size: 0.5rem; font-weight: 600; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.2); }
     
-    /* Scenarios */
-    .scenario-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; margin-bottom: 0.4rem; }
-    .scenario-box { border-radius: 6px; padding: 0.4rem 0.5rem; text-align: center; }
-    .scenario-box.green { background: #ecfdf5; border: 1px solid #a7f3d0; }
-    .scenario-box.amber { background: #fffbeb; border: 1px solid #fde68a; }
-    .scenario-box.red { background: #fef2f2; border: 1px solid #fecaca; }
-    .scenario-label { font-size: 0.55rem; color: #64748b; }
-    .scenario-value { font-size: 0.9rem; font-weight: 600; }
-    .scenario-value.green { color: #059669; }
-    .scenario-value.amber { color: #d97706; }
-    .scenario-value.red { color: #dc2626; }
+    .result-scenarios {
+        font-size: 0.7rem; opacity: 0.85; margin-top: 0.4rem;
+        padding-top: 0.4rem; border-top: 1px solid rgba(255,255,255,0.2);
+    }
     
-    /* Metrics */
-    .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.3rem; }
-    .metric-box { background: #f8fafc; border-radius: 5px; padding: 0.35rem 0.4rem; text-align: center; border: 1px solid #e2e8f0; }
-    .metric-value { font-size: 0.8rem; font-weight: 700; color: #1e293b; }
-    .metric-label { font-size: 0.45rem; color: #64748b; text-transform: uppercase; }
+    /* Unlevered row */
+    .unlev-row {
+        font-size: 0.65rem; color: #64748b; 
+        padding: 0.5rem 1rem;
+        background: #f8fafc;
+        border-top: 1px solid #e2e8f0;
+    }
+    .unlev-row strong { color: #1e293b; }
     
-    /* Project section */
+    /* Project card */
     .project-card {
-        background: #f8fafc; border-radius: 6px; padding: 0.5rem 0.7rem;
-        border: 1px solid #e2e8f0; margin-top: 0.4rem;
+        background: #f8fafc; border-radius: 8px; padding: 0.6rem 0.9rem;
+        border: 1px solid #e2e8f0;
     }
     .project-title {
-        font-size: 0.5rem; font-weight: 600; color: #64748b;
-        text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem;
+        font-size: 0.55rem; font-weight: 600; color: #64748b;
+        text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem;
     }
     
     .footer { 
-        text-align: center; font-size: 0.5rem; color: #94a3b8; 
-        margin-top: 0.5rem; padding-top: 0.4rem; border-top: 1px solid #f1f5f9; 
+        text-align: center; font-size: 0.55rem; color: #94a3b8; 
+        margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid #f1f5f9; 
     }
     
     /* Streamlit overrides */
     div[data-testid="stSlider"] { padding-top: 0 !important; padding-bottom: 0 !important; }
-    div[data-testid="stSlider"] label p { font-size: 0.6rem !important; color: #475569 !important; }
-    div[data-testid="stNumberInput"] label p { font-size: 0.6rem !important; color: #475569 !important; }
+    div[data-testid="stSlider"] label p { font-size: 0.65rem !important; color: #475569 !important; }
+    div[data-testid="stNumberInput"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     div[data-testid="stNumberInput"] { margin-bottom: 0.15rem; }
-    div[data-testid="stNumberInput"] > div { max-width: 100px; }
-    div[data-testid="stSelectbox"] > div { max-width: 90px; }
-    div[data-testid="stSelectbox"] label p { font-size: 0.6rem !important; color: #475569 !important; }
+    div[data-testid="stNumberInput"] > div { max-width: 130px; }
+    div[data-testid="stSelectbox"] > div { max-width: 95px; }
+    div[data-testid="stSelectbox"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     
-    /* Smaller button */
+    /* Subtle button */
     div[data-testid="stButton"] button {
-        font-size: 0.55rem !important; padding: 0.35rem 0.5rem !important;
-        background-color: #3b82f6 !important; color: white !important;
+        font-size: 0.6rem !important; 
+        padding: 0.4rem 0.7rem !important;
+        background-color: transparent !important; 
+        color: #64748b !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 6px !important;
     }
     div[data-testid="stButton"] button:hover {
-        background-color: #2563eb !important;
+        background-color: #f1f5f9 !important;
+        border-color: #94a3b8 !important;
+        color: #475569 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -249,20 +263,8 @@ def find_min_coverage(capex, opex, toll_level, cod):
 # ============================================================================
 # SESSION STATE
 # ============================================================================
-if 'toll_slider_widget' not in st.session_state:
-    st.session_state.toll_slider_widget = 80
-
-# ============================================================================
-# HEADER
-# ============================================================================
-st.markdown('<div class="header-row"><div class="main-title">Battery Toll Calculator</div><div class="brand-text">Modo Energy</div></div>', unsafe_allow_html=True)
-
-# ============================================================================
-# MAIN LAYOUT
-# ============================================================================
-left, right = st.columns([1, 1.15], gap="medium")
-
-# Default project values (will be editable in right column)
+if 'toll_slider' not in st.session_state:
+    st.session_state.toll_slider = 80
 if 'capex' not in st.session_state:
     st.session_state.capex = 600
 if 'opex' not in st.session_state:
@@ -270,25 +272,35 @@ if 'opex' not in st.session_state:
 if 'cod' not in st.session_state:
     st.session_state.cod = 2027
 
+# ============================================================================
+# HEADER
+# ============================================================================
+st.markdown('<div class="header-row"><div class="main-title">Battery Toll Calculator</div><div class="brand-text">Modo Energy</div></div>', unsafe_allow_html=True)
+
+# ============================================================================
+# LAYOUT
+# ============================================================================
+left, right = st.columns([1, 1.1], gap="large")
+
 with left:
     st.markdown('<div class="section-card"><div class="section-title">Structure</div>', unsafe_allow_html=True)
     
-    # Toll level + Find minimum button
-    col1, col2 = st.columns([1, 1])
+    # Toll level + subtle find minimum button
+    col1, col2 = st.columns([1.2, 1])
     with col1:
         toll_level = st.number_input("Toll Level (€k/MW/yr)", min_value=80, max_value=120, value=100, step=5)
     with col2:
-        st.markdown("<div style='height: 1.6rem;'></div>", unsafe_allow_html=True)  # Spacer to align
-        if st.button("Find minimum ▶", use_container_width=True):
+        st.markdown("<div style='height: 1.7rem;'></div>", unsafe_allow_html=True)
+        if st.button("Find minimum ▸", use_container_width=True):
             min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_level, st.session_state.cod)
             if min_cov is not None:
-                st.session_state.toll_slider_widget = min_cov
+                st.session_state.toll_slider = min_cov
                 st.rerun()
     
-    # Toll coverage slider
-    toll_pct = st.slider("Toll Coverage %", 0, 100, key="toll_slider_widget")
+    # Coverage slider
+    toll_pct = st.slider("Toll Coverage %", 0, 100, key="toll_slider")
     
-    # Show minimum indicator
+    # Min indicator
     min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_level, st.session_state.cod)
     if min_cov is not None:
         st.markdown(f'<div class="min-indicator">Minimum for feasible debt: <span>{min_cov}%</span></div>', unsafe_allow_html=True)
@@ -310,30 +322,35 @@ with left:
     </div>
     ''', unsafe_allow_html=True)
     
-    # Financing terms
+    # Debt/Equity under gearing
+    result = calculate(st.session_state.capex, st.session_state.opex, toll_pct, toll_level, st.session_state.cod)
+    if result:
+        st.markdown(f'''
+        <div class="capital-row">
+            <span>€{result['debt']:.0f}k debt</span>
+            <span>€{result['equity']:.0f}k equity</span>
+        </div>
+        ''', unsafe_allow_html=True)
+    
+    # Terms row
     dscr_target = get_dscr(toll_pct)
     margin = get_margin(toll_pct)
     rate = EURIBOR + margin / 100
     
     st.markdown(f'''
-    <div class="terms-compact">
-        <div class="term-chip"><strong>{dscr_target:.2f}x</strong> DSCR</div>
-        <div class="term-chip"><strong>{rate:.1f}%</strong> Rate</div>
-        <div class="term-chip"><strong>7yr</strong> Tenor</div>
+    <div class="terms-row">
+        <span class="term-chip"><strong>{dscr_target:.2f}x</strong> DSCR</span>
+        <span class="term-chip"><strong>{rate:.1f}%</strong> rate</span>
+        <span class="term-chip"><strong>7yr</strong> tenor</span>
     </div>
     ''', unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Calculate with current project settings
-result = calculate(st.session_state.capex, st.session_state.opex, toll_pct, toll_level, st.session_state.cod)
-
 # ============================================================================
-# RESULTS + PROJECT
+# RESULTS
 # ============================================================================
 with right:
-    st.markdown('<div class="section-card"><div class="section-title">Results</div>', unsafe_allow_html=True)
-    
     if result:
         hurdle = get_hurdle(toll_pct)
         base_irr = result['base']['irr']
@@ -342,83 +359,66 @@ with right:
         min_dscr = result['low']['min_dscr']
         dscr_target = result['dscr_target']
         
-        # Debt card
+        st.markdown('<div class="result-card">', unsafe_allow_html=True)
+        
+        # DEBT section
         dscr_margin = min_dscr - dscr_target
-        debt_class = "result-pass" if result['feasible'] else "result-fail"
+        debt_class = "pass" if result['feasible'] else "fail"
         debt_badge = "FEASIBLE" if result['feasible'] else "NOT FEASIBLE"
         dscr_sign = "+" if dscr_margin >= 0 else ""
         
         st.markdown(f'''
-        <div class="{debt_class}">
+        <div class="result-section {debt_class}">
             <div class="result-header">
                 <div>
-                    <div class="result-label">Debt (Low Case DSCR)</div>
+                    <div class="result-label">Debt</div>
                     <div class="result-value">{min_dscr:.2f}x</div>
-                    <div class="result-detail">vs {dscr_target:.2f}x target ({dscr_sign}{dscr_margin:.2f}x)</div>
+                    <div class="result-detail">vs {dscr_target:.2f}x DSCR target ({dscr_sign}{dscr_margin:.2f}x)</div>
                 </div>
                 <div class="result-badge">{debt_badge}</div>
             </div>
         </div>
         ''', unsafe_allow_html=True)
         
-        # Equity card
+        # EQUITY section
         irr_delta = base_irr - hurdle
         if irr_delta >= 0:
-            eq_class, eq_badge = "result-pass", "MEETS HURDLE"
+            eq_class, eq_badge = "pass", "MEETS HURDLE"
         elif irr_delta >= -3:
-            eq_class, eq_badge = "result-warn", "NEAR HURDLE"
+            eq_class, eq_badge = "warn", "NEAR HURDLE"
         else:
-            eq_class, eq_badge = "result-fail", "BELOW HURDLE"
+            eq_class, eq_badge = "fail", "BELOW HURDLE"
         
         sign = "+" if irr_delta >= 0 else ""
         st.markdown(f'''
-        <div class="{eq_class}">
+        <div class="result-section {eq_class}">
             <div class="result-header">
                 <div>
-                    <div class="result-label">Equity IRR (Base Case)</div>
+                    <div class="result-label">Equity IRR</div>
                     <div class="result-value">{base_irr:.1f}%</div>
                     <div class="result-detail">vs {hurdle:.0f}% hurdle ({sign}{irr_delta:.1f}%)</div>
                 </div>
                 <div class="result-badge">{eq_badge}</div>
             </div>
-        </div>
-        ''', unsafe_allow_html=True)
-        
-        # Scenarios
-        def get_cls(irr, h):
-            if irr >= h: return "green"
-            elif irr >= h - 3: return "amber"
-            else: return "red"
-        
-        st.markdown(f'''
-        <div class="scenario-row">
-            <div class="scenario-box {get_cls(low_irr, hurdle)}">
-                <div class="scenario-label">Low Case</div>
-                <div class="scenario-value {get_cls(low_irr, hurdle)}">{low_irr:.1f}%</div>
-            </div>
-            <div class="scenario-box {get_cls(high_irr, hurdle)}">
-                <div class="scenario-label">High Case</div>
-                <div class="scenario-value {get_cls(high_irr, hurdle)}">{high_irr:.1f}%</div>
+            <div class="result-scenarios">
+                {low_irr:.1f}% low case · {high_irr:.1f}% high case
             </div>
         </div>
         ''', unsafe_allow_html=True)
         
-        # Metrics
+        # Unlevered row
         st.markdown(f'''
-        <div class="metrics-grid">
-            <div class="metric-box"><div class="metric-value">{result['unlev_irr']:.1f}%</div><div class="metric-label">Unlev</div></div>
-            <div class="metric-box"><div class="metric-value">{result['gearing']:.0f}%</div><div class="metric-label">Gearing</div></div>
-            <div class="metric-box"><div class="metric-value">{result['debt']:.0f}k</div><div class="metric-label">Debt</div></div>
-            <div class="metric-box"><div class="metric-value">{result['equity']:.0f}k</div><div class="metric-label">Equity</div></div>
+        <div class="unlev-row">
+            <strong>{result['unlev_irr']:.1f}%</strong> unlevered project IRR
         </div>
         ''', unsafe_allow_html=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # Project settings
     st.markdown('<div class="project-card"><div class="project-title">Project</div>', unsafe_allow_html=True)
     
-    pc1, pc2, pc3 = st.columns(3)
+    pc1, pc2, pc3 = st.columns([1.1, 1, 0.9])
     with pc1:
         capex = st.number_input("CapEx (€k)", 300, 1000, st.session_state.capex, 25, key="capex_input")
         st.session_state.capex = capex
