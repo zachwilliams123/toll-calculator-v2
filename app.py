@@ -1,12 +1,12 @@
 """
-Battery Toll Calculator v11
+Battery Toll Calculator v12
 Modo Energy - German BESS
 
-Clean layout:
-- Subtle find minimum button
-- Combined result card with debt/equity separation
-- Debt/equity under gearing bar
-- Unlevered at bottom
+Option A layout:
+- Two separate result cards with rounded corners
+- Unlevered as plain text
+- No project title
+- No min indicator under slider
 """
 
 import streamlit as st
@@ -45,12 +45,6 @@ st.markdown("""
         margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em;
     }
     
-    /* Min indicator */
-    .min-indicator {
-        font-size: 0.6rem; color: #64748b; margin-top: -0.2rem; margin-bottom: 0.5rem;
-    }
-    .min-indicator span { color: #3b82f6; font-weight: 600; }
-    
     /* Gearing bar */
     .gearing-row {
         display: flex; align-items: center; gap: 0.6rem; margin: 0.5rem 0 0.3rem 0;
@@ -84,19 +78,13 @@ st.markdown("""
     }
     .term-chip strong { color: #1e293b; }
     
-    /* Result card - combined */
+    /* Result cards - separate with rounded corners */
     .result-card {
-        background: #fff; border-radius: 10px;
-        border: 1px solid #e2e8f0; overflow: hidden;
-        margin-bottom: 0.5rem;
+        border-radius: 10px; padding: 0.9rem 1rem; color: white; margin-bottom: 0.5rem;
     }
-    
-    .result-section {
-        padding: 0.9rem 1rem;
-    }
-    .result-section.pass { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; }
-    .result-section.warn { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; }
-    .result-section.fail { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; }
+    .result-card.pass { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+    .result-card.warn { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+    .result-card.fail { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
     
     .result-header { display: flex; justify-content: space-between; align-items: flex-start; }
     .result-label { font-size: 0.55rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.2rem; }
@@ -109,27 +97,20 @@ st.markdown("""
     }
     
     .result-scenarios {
-        font-size: 0.7rem; opacity: 0.85; margin-top: 0.4rem;
-        padding-top: 0.4rem; border-top: 1px solid rgba(255,255,255,0.2);
+        font-size: 0.7rem; opacity: 0.85; margin-top: 0.5rem;
+        padding-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.2);
     }
     
-    /* Unlevered row */
-    .unlev-row {
-        font-size: 0.65rem; color: #64748b; 
-        padding: 0.5rem 1rem;
-        background: #f8fafc;
-        border-top: 1px solid #e2e8f0;
+    /* Unlevered text */
+    .unlev-text {
+        font-size: 0.65rem; color: #64748b; margin-top: 0.3rem; margin-bottom: 0.6rem;
     }
-    .unlev-row strong { color: #1e293b; }
+    .unlev-text strong { color: #475569; }
     
-    /* Project card */
-    .project-card {
+    /* Project inputs - no title */
+    .project-row {
         background: #f8fafc; border-radius: 8px; padding: 0.6rem 0.9rem;
         border: 1px solid #e2e8f0;
-    }
-    .project-title {
-        font-size: 0.55rem; font-weight: 600; color: #64748b;
-        text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem;
     }
     
     .footer { 
@@ -138,7 +119,7 @@ st.markdown("""
     }
     
     /* Streamlit overrides */
-    div[data-testid="stSlider"] { padding-top: 0 !important; padding-bottom: 0 !important; }
+    div[data-testid="stSlider"] { padding-top: 0 !important; padding-bottom: 0.3rem !important; }
     div[data-testid="stSlider"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     div[data-testid="stNumberInput"] label p { font-size: 0.65rem !important; color: #475569 !important; }
     div[data-testid="stNumberInput"] { margin-bottom: 0.15rem; }
@@ -300,13 +281,6 @@ with left:
     # Coverage slider
     toll_pct = st.slider("Toll Coverage %", 0, 100, key="toll_slider")
     
-    # Min indicator
-    min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_level, st.session_state.cod)
-    if min_cov is not None:
-        st.markdown(f'<div class="min-indicator">Minimum for feasible debt: <span>{min_cov}%</span></div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="min-indicator" style="color:#dc2626;">Not feasible at this toll level</div>', unsafe_allow_html=True)
-    
     # Gearing bar
     gearing = get_gearing(toll_pct)
     bar_pct = (gearing - 45) / 25 * 100
@@ -351,6 +325,8 @@ with left:
 # RESULTS
 # ============================================================================
 with right:
+    st.markdown('<div class="section-title" style="margin-bottom: 0.5rem;">Results</div>', unsafe_allow_html=True)
+    
     if result:
         hurdle = get_hurdle(toll_pct)
         base_irr = result['base']['irr']
@@ -359,16 +335,14 @@ with right:
         min_dscr = result['low']['min_dscr']
         dscr_target = result['dscr_target']
         
-        st.markdown('<div class="result-card">', unsafe_allow_html=True)
-        
-        # DEBT section
+        # DEBT card
         dscr_margin = min_dscr - dscr_target
         debt_class = "pass" if result['feasible'] else "fail"
         debt_badge = "FEASIBLE" if result['feasible'] else "NOT FEASIBLE"
         dscr_sign = "+" if dscr_margin >= 0 else ""
         
         st.markdown(f'''
-        <div class="result-section {debt_class}">
+        <div class="result-card {debt_class}">
             <div class="result-header">
                 <div>
                     <div class="result-label">Debt</div>
@@ -380,7 +354,7 @@ with right:
         </div>
         ''', unsafe_allow_html=True)
         
-        # EQUITY section
+        # EQUITY card
         irr_delta = base_irr - hurdle
         if irr_delta >= 0:
             eq_class, eq_badge = "pass", "MEETS HURDLE"
@@ -391,7 +365,7 @@ with right:
         
         sign = "+" if irr_delta >= 0 else ""
         st.markdown(f'''
-        <div class="result-section {eq_class}">
+        <div class="result-card {eq_class}">
             <div class="result-header">
                 <div>
                     <div class="result-label">Equity IRR</div>
@@ -406,17 +380,15 @@ with right:
         </div>
         ''', unsafe_allow_html=True)
         
-        # Unlevered row
+        # Unlevered text
         st.markdown(f'''
-        <div class="unlev-row">
+        <div class="unlev-text">
             <strong>{result['unlev_irr']:.1f}%</strong> unlevered project IRR
         </div>
         ''', unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
     
-    # Project settings
-    st.markdown('<div class="project-card"><div class="project-title">Project</div>', unsafe_allow_html=True)
+    # Project inputs - no title
+    st.markdown('<div class="project-row">', unsafe_allow_html=True)
     
     pc1, pc2, pc3 = st.columns([1.1, 1, 0.9])
     with pc1:
