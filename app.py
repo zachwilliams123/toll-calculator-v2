@@ -120,6 +120,20 @@ st.markdown("""
     div[data-testid="stNumberInput"] { margin-bottom: 0.15rem; }
     div[data-testid="stNumberInput"] input { font-size: 0.85rem !important; }
     div[data-testid="stNumberInput"] > div { max-width: 130px; }
+    div[data-testid="stNumberInput"] > div > div { 
+        background-color: #f1f5f9 !important; 
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 8px !important;
+    }
+    div[data-testid="stNumberInput"] button {
+        background-color: #f1f5f9 !important;
+        border: none !important;
+        color: #64748b !important;
+    }
+    div[data-testid="stNumberInput"] button:hover {
+        background-color: #e2e8f0 !important;
+        color: #475569 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
