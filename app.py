@@ -1,10 +1,11 @@
 """
-Battery Toll Calculator v14
+Battery Toll Calculator v16
 Modo Energy - German BESS
 
-7-year aligned horizon (toll, debt, equity IRR)
-Disclaimer at top
-Tighter methodology/glossary
+- 10-year equity IRR (7yr toll + 3yr merchant tail)
+- No degradation applied (already in Modo forecasts)
+- COD 2027
+- Fixed methodology dropdown styling
 """
 
 import streamlit as st
@@ -19,17 +20,17 @@ st.set_page_config(page_title="Battery Toll Calculator | Modo Energy", layout="w
 CAPEX = 625  # €k/MW (including BKZ)
 OPEX = 7     # €k/MW/yr
 EURIBOR = 2.25  # %
-TENOR = 7    # years (debt, toll, and equity IRR horizon)
+TOLL_TENOR = 7    # years (toll and debt)
+PROJECT_LIFE = 10  # years (for equity IRR - includes merchant tail)
 DURATION = 2  # hours
 CYCLES = 1.5  # per day
-DEGRADATION = 0.025  # 2.5% per year
 
-# Revenue forecasts (€k/MW/yr) - Modo Energy German BESS merchant forecasts
-# Only need 7 years now
+# Revenue forecasts (€k/MW/yr) - Modo Energy German BESS
+# ALREADY INCLUDE DEGRADATION - do not apply again
 REVENUE_DATA = {
-    'low':  [94, 76, 72, 69, 68, 68, 70],
-    'base': [155, 129, 124, 119, 117, 118, 118],
-    'high': [205, 168, 163, 158, 154, 157, 155],
+    'low':  [94, 76, 72, 69, 68, 68, 70, 67, 67, 69],
+    'base': [155, 129, 124, 119, 117, 118, 118, 117, 114, 115],
+    'high': [205, 168, 163, 158, 154, 157, 155, 151, 154, 154],
 }
 
 # ============================================================================
@@ -152,39 +153,54 @@ st.markdown("""
         border-radius: 0 !important;
     }
     
-    /* Expander styling */
+    /* Expander styling - fixed */
     div[data-testid="stExpander"] {
         border: 1px solid #e2e8f0 !important;
         border-radius: 8px !important;
         margin-top: 0.5rem;
+        background: white;
+    }
+    div[data-testid="stExpander"] details {
+        border: none !important;
     }
     div[data-testid="stExpander"] summary {
-        font-size: 0.7rem !important;
+        padding: 0.6rem 0.8rem !important;
+    }
+    div[data-testid="stExpander"] summary p {
+        font-size: 0.72rem !important;
+        font-weight: 500 !important;
+        color: #475569 !important;
+        margin: 0 !important;
+    }
+    div[data-testid="stExpander"] svg {
+        width: 12px !important;
+        height: 12px !important;
         color: #64748b !important;
-        padding: 0.5rem 0.8rem !important;
     }
-    div[data-testid="stExpander"] summary span {
-        font-size: 0.7rem !important;
-    }
-    div[data-testid="stExpander"] > div > div {
+    div[data-testid="stExpander"] > details > div {
         padding: 0 0.8rem 0.8rem 0.8rem !important;
+        border-top: 1px solid #f1f5f9;
     }
     
     /* Methodology content */
     .method-section {
-        font-size: 0.68rem; color: #475569; line-height: 1.5;
-        margin-bottom: 0.6rem;
+        font-size: 0.68rem; color: #475569; line-height: 1.55;
+        margin-bottom: 0.5rem;
     }
     .method-section strong { color: #1e293b; }
     .method-title {
         font-size: 0.7rem; font-weight: 600; color: #1e293b;
-        margin-bottom: 0.3rem; margin-top: 0.5rem;
+        margin-bottom: 0.2rem; margin-top: 0.5rem;
     }
     .method-title:first-child { margin-top: 0; }
     .glossary-term {
-        font-size: 0.68rem; margin-bottom: 0.4rem;
+        font-size: 0.65rem; margin-bottom: 0.3rem; color: #475569; line-height: 1.5;
     }
     .glossary-term strong { color: #1e293b; }
+    .fixed-assumptions {
+        font-size: 0.65rem; color: #64748b; margin-top: 0.5rem;
+        padding-top: 0.4rem; border-top: 1px solid #f1f5f9;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -215,10 +231,15 @@ def get_equity_hurdle(toll_pct: float) -> float:
         return 16.0
 
 # ============================================================================
-# FINANCIAL MODEL (7-YEAR HORIZON)
+# FINANCIAL MODEL
 # ============================================================================
 def calculate_project(toll_pct: float, toll_price: float) -> dict:
-    """Calculate project financials over 7-year toll/debt tenor"""
+    """
+    Calculate project financials:
+    - Years 1-7: toll (contracted %) + merchant (uncontracted %)
+    - Years 8-10: 100% merchant (toll expired, debt paid off)
+    - No degradation applied (already in Modo forecasts)
+    """
     
     # Financing terms
     gearing = get_gearing(toll_pct)
@@ -231,46 +252,54 @@ def calculate_project(toll_pct: float, toll_price: float) -> dict:
     debt = total_capex * gearing / 100
     equity = total_capex - debt
     
-    # Degradation factors
-    degradation_factors = [(1 - DEGRADATION) ** i for i in range(TENOR)]
-    
-    # Revenue: toll + merchant (7 years)
     toll_fraction = toll_pct / 100
     
     def build_revenue_series(merchant_forecast: list) -> list:
-        return [
-            toll_price * toll_fraction + 
-            merchant_forecast[i] * degradation_factors[i] * (1 - toll_fraction)
-            for i in range(TENOR)
-        ]
+        """
+        Years 1-7: toll + merchant blend
+        Years 8-10: 100% merchant (toll expired)
+        """
+        revenue = []
+        for i in range(PROJECT_LIFE):
+            if i < TOLL_TENOR:
+                # During toll: blend of toll and merchant
+                year_rev = toll_price * toll_fraction + merchant_forecast[i] * (1 - toll_fraction)
+            else:
+                # After toll expires: 100% merchant
+                year_rev = merchant_forecast[i]
+            revenue.append(year_rev)
+        return revenue
     
     rev_low = build_revenue_series(REVENUE_DATA['low'])
     rev_base = build_revenue_series(REVENUE_DATA['base'])
     rev_high = build_revenue_series(REVENUE_DATA['high'])
     
-    # Debt service (7-year amortizing)
+    # Debt service (7-year amortizing, then zero)
     if debt > 0 and all_in_rate > 0:
         r = all_in_rate
-        n = TENOR
+        n = TOLL_TENOR
         annual_debt_service = debt * (r * (1 + r)**n) / ((1 + r)**n - 1)
     else:
         annual_debt_service = 0
     
-    debt_service = [annual_debt_service for _ in range(TENOR)]
+    debt_service = [annual_debt_service if i < TOLL_TENOR else 0 for i in range(PROJECT_LIFE)]
     
     def calculate_scenario(revenue_series: list) -> dict:
         """Calculate IRR and DSCR for a scenario"""
         # Net cash flow = Revenue - OpEx
-        net_cash_flow = [revenue_series[i] * 1000 - OPEX * 1000 for i in range(TENOR)]
+        net_cash_flow = [revenue_series[i] * 1000 - OPEX * 1000 for i in range(PROJECT_LIFE)]
         
         # Equity cash flow = NCF - Debt Service
-        equity_cash_flow = [net_cash_flow[i] - debt_service[i] for i in range(TENOR)]
+        equity_cash_flow = [net_cash_flow[i] - debt_service[i] for i in range(PROJECT_LIFE)]
         
-        # DSCR for each year
-        dscr_values = [net_cash_flow[i] / debt_service[i] if debt_service[i] > 0 else 99 for i in range(TENOR)]
-        min_dscr = min(dscr_values)
+        # DSCR only during debt period (years 1-7)
+        dscr_values = []
+        for i in range(TOLL_TENOR):
+            if debt_service[i] > 0:
+                dscr_values.append(net_cash_flow[i] / debt_service[i])
+        min_dscr = min(dscr_values) if dscr_values else 99.0
         
-        # Equity IRR over 7 years
+        # Equity IRR over 10 years (includes merchant tail)
         try:
             irr = npf.irr([-equity] + equity_cash_flow) * 100
             if np.isnan(irr) or irr < -50 or irr > 200:
@@ -398,7 +427,7 @@ with left:
     <div class="terms-row">
         <span class="term-chip"><strong>{result['dscr_target']:.2f}x</strong> DSCR</span>
         <span class="term-chip"><strong>{result['all_in_rate']:.1f}%</strong> rate</span>
-        <span class="term-chip"><strong>{TENOR}yr</strong> tenor</span>
+        <span class="term-chip"><strong>{TOLL_TENOR}yr</strong> tenor</span>
     </div>
     ''', unsafe_allow_html=True)
 
@@ -451,7 +480,7 @@ with right:
     <div class="result-card {eq_class}">
         <div class="result-header">
             <div>
-                <div class="result-label">Equity IRR ({TENOR}yr)</div>
+                <div class="result-label">Equity IRR ({PROJECT_LIFE}yr)</div>
                 <div class="result-value">{base_irr:.1f}%</div>
                 <div class="result-detail">vs {hurdle:.0f}% hurdle ({sign}{irr_delta:.1f}%)</div>
             </div>
@@ -464,39 +493,39 @@ with right:
     ''', unsafe_allow_html=True)
 
 # ============================================================================
-# METHODOLOGY (spans full width)
+# METHODOLOGY
 # ============================================================================
 with st.expander("Methodology & Assumptions"):
     st.markdown(f'''
 <div class="method-title">Revenue</div>
 <div class="method-section">
-Total = (Toll price × Toll %) + (Modo merchant forecast × (1 − Toll %) × degradation factor)
+<strong>Years 1–7:</strong> (Toll price × Toll %) + (Modo merchant forecast × (1 − Toll %))<br>
+<strong>Years 8–10:</strong> 100% merchant (toll expired, debt repaid)
 </div>
 
 <div class="method-title">Debt</div>
 <div class="method-section">
-Sized at <strong>45–80% gearing</strong> (scales with toll coverage). DSCR covenant tested against Modo low case: <strong>2.0×</strong> at 0% toll → <strong>1.2×</strong> at 100% toll. 7-year amortising loan at EURIBOR + 200–280 bps.
+Sized at <strong>45–80% gearing</strong> (scales with toll coverage). 7-year amortising loan at EURIBOR + 200–280 bps. DSCR covenant tested against Modo low case: <strong>2.0×</strong> at 0% toll → <strong>1.2×</strong> at 100% toll.
 </div>
 
 <div class="method-title">Equity</div>
 <div class="method-section">
-IRR calculated over <strong>7-year toll tenor</strong> using Modo base case. Hurdle rates reflect risk: <strong>10%</strong> (≥80% toll), <strong>12%</strong> (50–79%), <strong>14%</strong> (20–49%), <strong>16%</strong> (&lt;20%).
+IRR calculated over <strong>10 years</strong> (includes 3-year merchant tail post-toll). Modo base case revenue. Hurdle rates: <strong>10%</strong> (≥80% toll), <strong>12%</strong> (50–79%), <strong>14%</strong> (20–49%), <strong>16%</strong> (&lt;20%).
 </div>
 
 <div class="method-title">Glossary</div>
 <div class="glossary-term">
-<strong>IRR (Internal Rate of Return)</strong> — The annualised return on equity capital. Measures what investors earn on their investment over the project life, accounting for the timing of cash flows.
+<strong>IRR</strong> — Internal Rate of Return. The annualised return on equity, accounting for the timing of cash flows.
 </div>
 <div class="glossary-term">
-<strong>DSCR (Debt Service Coverage Ratio)</strong> — How many times operating cash flow covers debt payments. A 1.5× DSCR means the project generates 50% more cash than needed to service debt. Lenders set minimum covenants as a buffer against underperformance.
+<strong>DSCR</strong> — Debt Service Coverage Ratio. Operating cash flow ÷ debt payments. A 1.5× means 50% headroom above debt obligations.
 </div>
 <div class="glossary-term">
-<strong>Gearing</strong> — Debt as a percentage of total capital. Higher gearing amplifies equity returns but increases risk. Contracted revenue supports higher leverage.
+<strong>Gearing</strong> — Debt as a share of total capital. Contracted revenue supports higher leverage.
 </div>
 
-<div class="method-title">Fixed Assumptions</div>
-<div class="method-section">
-€{CAPEX}k/MW CapEx (inc. BKZ) · €{OPEX}k/MW/yr OpEx · {DURATION}hr duration · {CYCLES} cycles/day · {DEGRADATION*100:.1f}% annual degradation · COD 2027
+<div class="fixed-assumptions">
+€{CAPEX}k/MW CapEx (inc. BKZ) · €{OPEX}k/MW/yr OpEx · {DURATION}hr · {CYCLES} cycles/day · COD 2027
 </div>
     ''', unsafe_allow_html=True)
 
@@ -505,6 +534,6 @@ IRR calculated over <strong>7-year toll tenor</strong> using Modo base case. Hur
 # ============================================================================
 st.markdown(f'''
 <div class="footer">
-    {DURATION}hr · {CYCLES} cycle · {TENOR}yr tenor · {DEGRADATION*100:.1f}% degradation · COD 2027 · Modo forecasts
+    {DURATION}hr · {CYCLES} cycle · {TOLL_TENOR}yr toll/debt · {PROJECT_LIFE}yr equity IRR · COD 2027 · Modo forecasts
 </div>
 ''', unsafe_allow_html=True)
