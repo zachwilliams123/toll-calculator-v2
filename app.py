@@ -1,6 +1,6 @@
 """
-Battery Toll Calculator v21
-Auto gearing that follows toll, with manual override option
+Battery Toll Calculator v22
+Standard/Custom finance structure modes
 """
 
 import streamlit as st
@@ -28,20 +28,15 @@ st.markdown("""
     .disclaimer {font-size: 11px; color: #64748b; text-align: center; padding: 8px 12px; background: #f8fafc; border-radius: 6px; margin-bottom: 12px; border: 1px solid #e2e8f0;}
     .disclaimer a {color: #3b82f6; text-decoration: none;}
     
-    .header-row {display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #e2e8f0;}
+    .header-row {display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #e2e8f0;}
     .main-title {font-size: 22px; font-weight: 700; color: #1a1a2e;}
     .brand-text {font-size: 13px; color: #1a1a2e; font-weight: 600;}
     
-    .section-label {font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;}
     .input-label {font-size: 13px; color: #475569; margin-bottom: 6px;}
     
-    .gearing-header {display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;}
-    .reset-link {font-size: 12px; color: #3b82f6; cursor: pointer; text-decoration: none;}
-    .reset-link:hover {text-decoration: underline;}
+    .capital-row {font-size: 12px; color: #64748b; margin: 4px 0 12px 0;}
     
-    .capital-row {display: flex; justify-content: flex-end; gap: 16px; font-size: 12px; color: #64748b; margin: 8px 0 12px 0;}
-    
-    .terms-row {display: flex; gap: 12px; padding-top: 10px; border-top: 1px solid #f1f5f9;}
+    .terms-row {display: flex; gap: 12px; padding-top: 10px; border-top: 1px solid #f1f5f9; margin-top: 8px;}
     .term-chip {font-size: 12px; color: #475569;}
     .term-chip strong {color: #1e293b;}
     
@@ -62,12 +57,21 @@ st.markdown("""
     div[data-testid="stNumberInput"] label {display: none !important;}
     div[data-testid="stNumberInput"] input {font-size: 14px !important; padding: 8px 12px !important; border: 1px solid #e2e8f0 !important; border-radius: 8px !important; background: #f8fafc !important;}
     div[data-testid="stNumberInput"] > div {max-width: 120px;}
+    
     div[data-testid="stSlider"] {padding-top: 0 !important; padding-bottom: 0 !important;}
     div[data-testid="stSlider"] label {display: none !important;}
     
+    div[data-testid="stSelectbox"] label {display: none !important;}
+    div[data-testid="stSelectbox"] > div > div {font-size: 14px !important; background: #f8fafc !important; border: 1px solid #e2e8f0 !important; border-radius: 8px !important;}
+    
+    /* Expander without arrow */
     div[data-testid="stExpander"] {border: 1px solid #e2e8f0 !important; border-radius: 8px !important; margin-top: 16px;}
     div[data-testid="stExpander"] details {border: none !important;}
     div[data-testid="stExpander"] summary p {font-size: 13px !important; font-weight: 500 !important; color: #475569 !important;}
+    div[data-testid="stExpander"] summary svg {display: none !important;}
+    
+    /* Disabled slider styling */
+    .disabled-slider {opacity: 0.6; pointer-events: none;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -105,9 +109,9 @@ def calculate_project(toll_pct, toll_price, gearing):
         'low': low, 'base': base, 'high': high,
     }
 
-# Session state for gearing override
-if 'gearing_override' not in st.session_state:
-    st.session_state.gearing_override = None
+# Session state
+if 'custom_gearing' not in st.session_state:
+    st.session_state.custom_gearing = 70
 
 # Disclaimer & Header
 st.markdown('<div class="disclaimer">Model for educational purposes only. <a href="mailto:zach.williams@modoenergy.com">zach.williams@modoenergy.com</a> for detailed project analysis.</div>', unsafe_allow_html=True)
@@ -116,55 +120,41 @@ st.markdown('<div class="header-row"><div class="main-title">Battery Toll Calcul
 left_col, right_col = st.columns([1, 1.1], gap="large")
 
 with left_col:
-    st.markdown('<div class="section-label">Structure</div>', unsafe_allow_html=True)
+    # Finance structure dropdown
+    st.markdown('<div class="input-label">Finance structure</div>', unsafe_allow_html=True)
+    mode = st.selectbox("mode", ["Standard", "Custom"], label_visibility="collapsed")
     
+    # Toll price
     st.markdown('<div class="input-label">Toll Price (€k/MW/yr)</div>', unsafe_allow_html=True)
     toll_price = st.number_input("price", 80, 140, 120, 5, label_visibility="collapsed")
     
+    # Toll coverage
     st.markdown('<div class="input-label">Toll Coverage %</div>', unsafe_allow_html=True)
     toll_pct = st.slider("toll", 0, 100, 80, label_visibility="collapsed")
     
+    # Gearing
     auto_gearing = int(round(get_auto_gearing(toll_pct)))
     
-    # Gearing header with optional reset
-    if st.session_state.gearing_override is not None:
-        gcol1, gcol2 = st.columns([3, 2])
-        with gcol1:
-            st.markdown('<div class="input-label">Gearing %</div>', unsafe_allow_html=True)
-        with gcol2:
-            if st.button(f"({auto_gearing}% typical)", key="reset_btn", type="tertiary"):
-                st.session_state.gearing_override = None
-                st.rerun()
+    st.markdown('<div class="input-label">Gearing %</div>', unsafe_allow_html=True)
+    
+    if mode == "Standard":
+        gearing = auto_gearing
+        st.slider("gearing", 30, 85, gearing, label_visibility="collapsed", disabled=True, key="gearing_disabled")
     else:
-        st.markdown('<div class="input-label">Gearing %</div>', unsafe_allow_html=True)
+        gearing = st.slider("gearing", 30, 85, st.session_state.custom_gearing, label_visibility="collapsed", key="gearing_enabled")
+        st.session_state.custom_gearing = gearing
     
-    # Determine current gearing value
-    current_gearing = st.session_state.gearing_override if st.session_state.gearing_override is not None else auto_gearing
-    
-    # Gearing slider
-    new_gearing = st.slider("gearing", 30, 85, current_gearing, label_visibility="collapsed", key="gearing_slider")
-    
-    # Check if user changed gearing
-    if new_gearing != current_gearing:
-        if new_gearing != auto_gearing:
-            st.session_state.gearing_override = new_gearing
-        else:
-            st.session_state.gearing_override = None
-        st.rerun()
-    
-    gearing = new_gearing
     result = calculate_project(toll_pct, toll_price, gearing)
     
-    st.markdown(f'<div class="capital-row"><span>€{result["debt"]:.0f}k debt</span><span>€{result["equity"]:.0f}k equity</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="capital-row">€{result["debt"]:.0f}k debt / €{result["equity"]:.0f}k equity</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="terms-row"><span class="term-chip"><strong>{result["dscr_target"]:.2f}×</strong> DSCR</span><span class="term-chip"><strong>{result["all_in_rate"]:.1f}%</strong> rate</span><span class="term-chip"><strong>7yr</strong> tenor</span></div>', unsafe_allow_html=True)
 
 with right_col:
-    st.markdown('<div class="section-label">Returns</div>', unsafe_allow_html=True)
-    
     hurdle = 10
     low_irr, base_irr, high_irr = result['low']['irr'], result['base']['irr'], result['high']['irr']
     min_dscr, dscr_target = result['low']['min_dscr'], result['dscr_target']
     
+    # Debt card
     debt_class = "pass" if result['debt_feasible'] else "fail"
     debt_badge = "FEASIBLE" if result['debt_feasible'] else "NOT FEASIBLE"
     dscr_margin = min_dscr - dscr_target
@@ -183,6 +173,7 @@ with right_col:
     <div class="dscr-note">DSCR tested against Modo low case</div>
     ''', unsafe_allow_html=True)
     
+    # Equity card
     eq_class = "pass" if low_irr >= hurdle else "warn" if base_irr >= hurdle else "fail"
     eq_badge = "MEETS HURDLE" if low_irr >= hurdle else "BASE MEETS HURDLE" if base_irr >= hurdle else "BELOW HURDLE"
     
