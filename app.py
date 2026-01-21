@@ -107,10 +107,9 @@ st.markdown("""
     }
     .unlev-text strong { color: #475569; }
     
-    /* Project inputs - no title */
-    .project-row {
-        background: #f8fafc; border-radius: 8px; padding: 0.6rem 0.9rem;
-        border: 1px solid #e2e8f0;
+    /* Project inputs - plain */
+    .project-inputs {
+        margin-top: 0.5rem;
     }
     
     .footer { 
@@ -160,7 +159,7 @@ TENOR = 7
 # FINANCING FORMULAS
 # ============================================================================
 def get_gearing(toll_pct):
-    return 45 + toll_pct * 0.25
+    return 45 + toll_pct * 0.35  # 45% at 0% coverage → 80% at 100% coverage
 
 def get_dscr(toll_pct):
     return 2.00 - toll_pct * 0.008
@@ -272,7 +271,7 @@ with left:
         toll_level = st.number_input("Toll Level (€k/MW/yr)", min_value=80, max_value=120, value=100, step=5)
     with col2:
         st.markdown("<div style='height: 1.7rem;'></div>", unsafe_allow_html=True)
-        if st.button("Find minimum ▸", use_container_width=True):
+        if st.button("Minimum coverage ▸", use_container_width=True):
             min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_level, st.session_state.cod)
             if min_cov is not None:
                 st.session_state.toll_slider = min_cov
@@ -283,7 +282,7 @@ with left:
     
     # Gearing bar
     gearing = get_gearing(toll_pct)
-    bar_pct = (gearing - 45) / 25 * 100
+    bar_pct = (gearing - 45) / 35 * 100  # Scale 45-80% to 0-100%
     
     st.markdown(f'''
     <div class="gearing-row">
@@ -387,8 +386,8 @@ with right:
         </div>
         ''', unsafe_allow_html=True)
     
-    # Project inputs - no title
-    st.markdown('<div class="project-row">', unsafe_allow_html=True)
+    # Project inputs - plain
+    st.markdown('<div class="project-inputs">', unsafe_allow_html=True)
     
     pc1, pc2, pc3 = st.columns([1.1, 1, 0.9])
     with pc1:
