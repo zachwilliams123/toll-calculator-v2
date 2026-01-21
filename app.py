@@ -139,7 +139,7 @@ if 'show_method' not in st.session_state:
     st.session_state.show_method = False
 
 # Disclaimer & Header
-st.markdown('<div class="disclaimer">Model for educational purposes only. <a href="mailto:zach.williams@modoenergy.com">zach.williams@modoenergy.com</a> for detailed project analysis.</div>', unsafe_allow_html=True)
+st.markdown('<div class="disclaimer">for educational purposes only <a href="mailto:zach.williams@modoenergy.com">zach.williams@modoenergy.com</a> for detailed project analysis.</div>', unsafe_allow_html=True)
 st.markdown('<div class="header-row"><div class="main-title">Battery Toll Calculator</div><div class="brand-text">Modo Energy</div></div>', unsafe_allow_html=True)
 
 left_col, right_col = st.columns([1, 1.1], gap="large")
