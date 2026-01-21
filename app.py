@@ -243,17 +243,23 @@ with left:
     st.markdown('<div class="section-label">Structure</div>', unsafe_allow_html=True)
     
     # Toll price (no button)
-    toll_price = st.number_input("Toll Price (€k/MW/yr)", min_value=80, max_value=140, value=100, step=5)
+    toll_price = st.number_input("Toll Price (€k/MW/yr)", min_value=80, max_value=140, value=120, step=5)
     
-    # Coverage slider
-    toll_pct = st.slider("Toll Coverage %", 0, 100, key="toll_slider")
-    
-    # Min viable coverage (calculated and shown under slider)
+    # Coverage slider with min viable right-aligned
     min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_price, 2027)
     if min_cov is not None:
-        st.markdown(f'<div style="font-size: 0.7rem; color: #64748b; margin-top: -0.3rem; margin-bottom: 0.5rem;">Min viable: <strong style="color: #475569;">{min_cov}%</strong></div>', unsafe_allow_html=True)
+        min_text = f'Min viable: <strong>{min_cov}%</strong>'
     else:
-        st.markdown(f'<div style="font-size: 0.7rem; color: #ef4444; margin-top: -0.3rem; margin-bottom: 0.5rem;">Not feasible at any coverage</div>', unsafe_allow_html=True)
+        min_text = '<span style="color: #ef4444;">Not viable</span>'
+    
+    st.markdown(f'''
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;">
+        <span style="font-size: 0.75rem; color: #475569;">Toll Coverage %</span>
+        <span style="font-size: 0.7rem; color: #64748b;">{min_text}</span>
+    </div>
+    ''', unsafe_allow_html=True)
+    
+    toll_pct = st.slider("Toll Coverage %", 0, 100, key="toll_slider", label_visibility="collapsed")
     
     # Gearing bar
     gearing = get_gearing(toll_pct)
