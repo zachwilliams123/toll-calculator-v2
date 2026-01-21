@@ -37,7 +37,7 @@ st.markdown("""
     .brand-text { font-size: 0.8rem; color: #1a1a2e; font-weight: 600; }
     
     .section-label {
-        font-size: 0.6rem; font-weight: 600; color: #64748b;
+        font-size: 0.7rem; font-weight: 600; color: #64748b;
         margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
     }
     
@@ -45,7 +45,7 @@ st.markdown("""
     .gearing-row {
         display: flex; align-items: center; gap: 0.6rem; margin: 0.5rem 0 0.3rem 0;
     }
-    .gearing-label { font-size: 0.65rem; color: #64748b; min-width: 50px; }
+    .gearing-label { font-size: 0.75rem; color: #64748b; min-width: 50px; }
     .gearing-bar-bg {
         flex: 1; background: #e2e8f0; border-radius: 5px; height: 22px;
         position: relative; overflow: hidden;
@@ -60,7 +60,7 @@ st.markdown("""
     /* Debt/Equity under gearing */
     .capital-row {
         display: flex; justify-content: flex-end; gap: 1rem;
-        font-size: 0.6rem; color: #64748b; margin-bottom: 0.5rem;
+        font-size: 0.7rem; color: #64748b; margin-bottom: 0.5rem;
     }
     .capital-row span { font-weight: 500; }
     
@@ -70,7 +70,7 @@ st.markdown("""
         border-top: 1px solid #f1f5f9; margin-top: 0.3rem;
     }
     .term-chip {
-        font-size: 0.6rem; color: #475569;
+        font-size: 0.7rem; color: #475569;
     }
     .term-chip strong { color: #1e293b; }
     
@@ -115,25 +115,11 @@ st.markdown("""
     
     /* Streamlit overrides */
     div[data-testid="stSlider"] { padding-top: 0 !important; padding-bottom: 0.3rem !important; }
-    div[data-testid="stSlider"] label p { font-size: 0.65rem !important; color: #475569 !important; }
-    div[data-testid="stNumberInput"] label p { font-size: 0.65rem !important; color: #475569 !important; }
+    div[data-testid="stSlider"] label p { font-size: 0.75rem !important; color: #475569 !important; }
+    div[data-testid="stNumberInput"] label p { font-size: 0.75rem !important; color: #475569 !important; }
     div[data-testid="stNumberInput"] { margin-bottom: 0.15rem; }
+    div[data-testid="stNumberInput"] input { font-size: 0.85rem !important; }
     div[data-testid="stNumberInput"] > div { max-width: 130px; }
-    
-    /* Gray subtle button */
-    div[data-testid="stButton"] button {
-        font-size: 0.6rem !important; 
-        padding: 0.4rem 0.6rem !important;
-        background-color: #f1f5f9 !important; 
-        color: #64748b !important;
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 6px !important;
-    }
-    div[data-testid="stButton"] button:hover {
-        background-color: #e2e8f0 !important;
-        border-color: #cbd5e1 !important;
-        color: #475569 !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -256,20 +242,18 @@ left, right = st.columns([1, 1.1], gap="large")
 with left:
     st.markdown('<div class="section-label">Structure</div>', unsafe_allow_html=True)
     
-    # Toll level + subtle find minimum button
-    col1, col2 = st.columns([1.2, 1])
-    with col1:
-        toll_level = st.number_input("Toll Level (€k/MW/yr)", min_value=80, max_value=140, value=100, step=5)
-    with col2:
-        st.markdown("<div style='height: 1.7rem;'></div>", unsafe_allow_html=True)
-        if st.button("Min coverage", use_container_width=True):
-            min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_level, 2027)
-            if min_cov is not None:
-                st.session_state.toll_slider = min_cov
-                st.rerun()
+    # Toll price (no button)
+    toll_price = st.number_input("Toll Price (€k/MW/yr)", min_value=80, max_value=140, value=100, step=5)
     
     # Coverage slider
     toll_pct = st.slider("Toll Coverage %", 0, 100, key="toll_slider")
+    
+    # Min viable coverage (calculated and shown under slider)
+    min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_price, 2027)
+    if min_cov is not None:
+        st.markdown(f'<div style="font-size: 0.7rem; color: #64748b; margin-top: -0.3rem; margin-bottom: 0.5rem;">Min viable: <strong style="color: #475569;">{min_cov}%</strong></div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div style="font-size: 0.7rem; color: #ef4444; margin-top: -0.3rem; margin-bottom: 0.5rem;">Not feasible at any coverage</div>', unsafe_allow_html=True)
     
     # Gearing bar
     gearing = get_gearing(toll_pct)
@@ -287,7 +271,7 @@ with left:
     ''', unsafe_allow_html=True)
     
     # Debt/Equity under gearing
-    result = calculate(st.session_state.capex, st.session_state.opex, toll_pct, toll_level, 2027)
+    result = calculate(st.session_state.capex, st.session_state.opex, toll_pct, toll_price, 2027)
     if result:
         st.markdown(f'''
         <div class="capital-row">
@@ -340,6 +324,7 @@ with right:
                 <div class="result-badge">{debt_badge}</div>
             </div>
         </div>
+        <div style="font-size: 0.6rem; color: #64748b; margin-top: -0.3rem; margin-bottom: 0.5rem;">DSCR tested against Modo low case forecast</div>
         ''', unsafe_allow_html=True)
         
         # EQUITY card
