@@ -1,12 +1,8 @@
 """
-Battery Toll Calculator v12
+Battery Toll Calculator v13
 Modo Energy - German BESS
 
-Option A layout:
-- Two separate result cards with rounded corners
-- Unlevered as plain text
-- No project title
-- No min indicator under slider
+Fixed CapEx/OpEx, clean calculation flow, methodology dropdown
 """
 
 import streamlit as st
@@ -14,6 +10,26 @@ import numpy as np
 import numpy_financial as npf
 
 st.set_page_config(page_title="Battery Toll Calculator | Modo Energy", layout="wide", initial_sidebar_state="collapsed")
+
+# ============================================================================
+# FIXED ASSUMPTIONS
+# ============================================================================
+CAPEX = 625  # €k/MW (including BKZ)
+OPEX = 7     # €k/MW/yr
+EURIBOR = 2.25  # %
+TENOR = 7    # years
+DURATION = 2  # hours
+CYCLES = 1.5  # per day
+DEGRADATION = 0.025  # 2.5% per year
+PROJECT_LIFE = 10  # years
+COD = 2027
+
+# Revenue forecasts (€k/MW/yr) - Modo Energy German BESS merchant forecasts
+REVENUE_DATA = {
+    'low':  [94, 76, 72, 69, 68, 68, 70, 67, 67, 69],
+    'base': [155, 129, 124, 119, 117, 118, 118, 117, 114, 115],
+    'high': [205, 168, 163, 158, 154, 157, 155, 151, 154, 154],
+}
 
 # ============================================================================
 # CSS
@@ -57,7 +73,7 @@ st.markdown("""
     }
     .gearing-value { font-size: 0.75rem; font-weight: 600; color: white; }
     
-    /* Debt/Equity under gearing */
+    /* Capital row under gearing */
     .capital-row {
         display: flex; justify-content: flex-end; gap: 1rem;
         font-size: 0.7rem; color: #64748b; margin-bottom: 0.5rem;
@@ -74,7 +90,7 @@ st.markdown("""
     }
     .term-chip strong { color: #1e293b; }
     
-    /* Result cards - separate with rounded corners */
+    /* Result cards */
     .result-card {
         border-radius: 10px; padding: 0.9rem 1rem; color: white; margin-bottom: 0.5rem;
     }
@@ -102,11 +118,6 @@ st.markdown("""
         font-size: 0.65rem; color: #64748b; margin-top: 0.3rem; margin-bottom: 0.6rem;
     }
     .unlev-text strong { color: #475569; }
-    
-    /* Project inputs - plain */
-    .project-inputs {
-        margin-top: 0.5rem;
-    }
     
     .footer { 
         text-align: center; font-size: 0.55rem; color: #94a3b8; 
@@ -137,123 +148,212 @@ st.markdown("""
         color: #64748b !important;
         border-radius: 0 !important;
     }
-    div[data-testid="stNumberInput"] button:hover {
-        background-color: #e2e8f0 !important;
-        color: #475569 !important;
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        font-size: 0.75rem !important;
+        color: #64748b !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA
-# ============================================================================
-REVENUE_DATA = {
-    2026: {'low': [142, 94, 76, 72, 69, 68, 68, 70, 67, 67], 'base': [240, 155, 129, 124, 119, 117, 118, 118, 117, 114], 'high': [319, 205, 168, 163, 158, 154, 157, 155, 151, 154]},
-    2027: {'low': [94, 76, 72, 69, 68, 68, 70, 67, 67, 69], 'base': [155, 129, 124, 119, 117, 118, 118, 117, 114, 115], 'high': [205, 168, 163, 158, 154, 157, 155, 151, 154, 154]},
-    2028: {'low': [76, 72, 69, 68, 68, 70, 67, 67, 69, 72], 'base': [129, 124, 119, 117, 118, 118, 117, 114, 115, 119], 'high': [168, 163, 158, 154, 157, 155, 151, 154, 154, 156]},
-}
-
-EURIBOR = 2.25
-TENOR = 7
-
-# ============================================================================
 # FINANCING FORMULAS
 # ============================================================================
-def get_gearing(toll_pct):
-    return 45 + toll_pct * 0.35  # 45% at 0% coverage → 80% at 100% coverage
+def get_gearing(toll_pct: float) -> float:
+    """
+    Gearing scales with toll coverage:
+    - 0% toll coverage → 45% gearing (higher merchant risk = lower leverage)
+    - 100% toll coverage → 80% gearing (contracted cashflows support more debt)
+    """
+    return 45 + toll_pct * 0.35
 
-def get_dscr(toll_pct):
+
+def get_dscr_target(toll_pct: float) -> float:
+    """
+    DSCR covenant scales with toll coverage:
+    - 0% toll coverage → 2.00x (lenders require higher coverage for merchant risk)
+    - 100% toll coverage → 1.20x (contracted revenue allows tighter covenant)
+    """
     return 2.00 - toll_pct * 0.008
 
-def get_margin(toll_pct):
+
+def get_margin_bps(toll_pct: float) -> float:
+    """
+    Debt margin over EURIBOR scales with toll coverage:
+    - 0% toll coverage → 280 bps
+    - 100% toll coverage → 200 bps
+    """
     return 280 - toll_pct * 0.80
 
-def get_hurdle(toll_pct):
-    if toll_pct >= 80: return 10.0
-    elif toll_pct >= 50: return 12.0
-    elif toll_pct >= 20: return 14.0
-    else: return 16.0
+
+def get_equity_hurdle(toll_pct: float) -> float:
+    """
+    Equity hurdle rate reflects risk profile:
+    - 80-100% toll → 10% (quasi-infrastructure, contracted)
+    - 50-79% toll → 12% (hybrid risk profile)
+    - 20-49% toll → 14% (significant merchant exposure)
+    - 0-19% toll → 16% (predominantly merchant)
+    """
+    if toll_pct >= 80:
+        return 10.0
+    elif toll_pct >= 50:
+        return 12.0
+    elif toll_pct >= 20:
+        return 14.0
+    else:
+        return 16.0
+
 
 # ============================================================================
 # FINANCIAL MODEL
 # ============================================================================
-def calculate(capex, opex, toll_pct, toll_level, cod):
-    revenue = REVENUE_DATA.get(cod, REVENUE_DATA[2027])
+def calculate_project(toll_pct: float, toll_price: float) -> dict:
+    """
+    Calculate project financials for given toll structure.
     
+    Args:
+        toll_pct: Percentage of revenue under toll (0-100)
+        toll_price: Toll price in €k/MW/yr
+    
+    Returns:
+        Dictionary with all financial metrics
+    """
+    # Financing terms (depend on toll coverage)
     gearing = get_gearing(toll_pct)
-    dscr_target = get_dscr(toll_pct)
-    rate = (EURIBOR + get_margin(toll_pct) / 100) / 100
+    dscr_target = get_dscr_target(toll_pct)
+    margin_bps = get_margin_bps(toll_pct)
+    all_in_rate = (EURIBOR + margin_bps / 100) / 100  # Convert to decimal
     
-    n = 10
-    deg = 0.025
-    df = [(1 - deg) ** i for i in range(n)]
-    tf = toll_pct / 100
-    
-    low = [toll_level * tf + revenue['low'][i] * df[i] * (1 - tf) for i in range(n)]
-    base = [toll_level * tf + revenue['base'][i] * df[i] * (1 - tf) for i in range(n)]
-    high = [toll_level * tf + revenue['high'][i] * df[i] * (1 - tf) for i in range(n)]
-    
-    total_capex = capex * 1000
+    # Capital structure
+    total_capex = CAPEX * 1000  # €/MW
     debt = total_capex * gearing / 100
     equity = total_capex - debt
-    if equity <= 0: return None
     
-    pmt = debt * (rate * (1 + rate)**TENOR) / ((1 + rate)**TENOR - 1) if debt > 0 else 0
-    ds = [pmt if i < TENOR else 0 for i in range(n)]
+    # Degradation factors (2.5% per year)
+    degradation_factors = [(1 - DEGRADATION) ** i for i in range(PROJECT_LIFE)]
     
-    def scenario(rev):
-        ncf = [rev[i] * 1000 - opex * 1000 for i in range(n)]
-        ecf = [ncf[i] - ds[i] for i in range(n)]
-        dscr_vals = [ncf[i] / ds[i] if ds[i] > 0 else 99 for i in range(n)]
-        min_dscr = min([d for d in dscr_vals if d < 99]) if any(d < 99 for d in dscr_vals) else 99
+    # Revenue calculation
+    # Tolled portion: fixed at toll_price, not degraded
+    # Merchant portion: Modo forecasts, degraded
+    toll_fraction = toll_pct / 100
+    
+    def build_revenue_series(merchant_forecast: list) -> list:
+        """Build annual revenue series combining toll and merchant"""
+        return [
+            toll_price * toll_fraction + 
+            merchant_forecast[i] * degradation_factors[i] * (1 - toll_fraction)
+            for i in range(PROJECT_LIFE)
+        ]
+    
+    rev_low = build_revenue_series(REVENUE_DATA['low'])
+    rev_base = build_revenue_series(REVENUE_DATA['base'])
+    rev_high = build_revenue_series(REVENUE_DATA['high'])
+    
+    # Debt service calculation (7-year amortizing loan)
+    if debt > 0 and all_in_rate > 0:
+        # PMT = PV × r × (1+r)^n / ((1+r)^n - 1)
+        r = all_in_rate
+        n = TENOR
+        annual_debt_service = debt * (r * (1 + r)**n) / ((1 + r)**n - 1)
+    else:
+        annual_debt_service = 0
+    
+    # Debt service schedule (paid for TENOR years, then zero)
+    debt_service = [annual_debt_service if i < TENOR else 0 for i in range(PROJECT_LIFE)]
+    
+    def calculate_scenario(revenue_series: list) -> dict:
+        """Calculate IRR and DSCR for a revenue scenario"""
+        # Net cash flow = Revenue - OpEx (all in €/MW)
+        net_cash_flow = [revenue_series[i] * 1000 - OPEX * 1000 for i in range(PROJECT_LIFE)]
+        
+        # Equity cash flow = NCF - Debt Service
+        equity_cash_flow = [net_cash_flow[i] - debt_service[i] for i in range(PROJECT_LIFE)]
+        
+        # DSCR = NCF / Debt Service (only meaningful when debt service > 0)
+        dscr_values = []
+        for i in range(PROJECT_LIFE):
+            if debt_service[i] > 0:
+                dscr_values.append(net_cash_flow[i] / debt_service[i])
+        
+        min_dscr = min(dscr_values) if dscr_values else 99.0
+        
+        # Equity IRR: initial equity outflow, then annual equity cash flows
         try:
-            irr = npf.irr([-equity] + ecf) * 100
-            if np.isnan(irr) or irr < -50 or irr > 200: irr = -99
-        except: irr = -99
-        return {'min_dscr': min_dscr, 'irr': irr}
+            irr = npf.irr([-equity] + equity_cash_flow) * 100
+            if np.isnan(irr) or irr < -50 or irr > 200:
+                irr = -99.0
+        except:
+            irr = -99.0
+        
+        return {
+            'irr': irr,
+            'min_dscr': min_dscr,
+            'net_cash_flow': net_cash_flow,
+            'equity_cash_flow': equity_cash_flow,
+        }
     
-    low_r = scenario(low)
-    base_r = scenario(base)
-    high_r = scenario(high)
+    # Run all three scenarios
+    low_result = calculate_scenario(rev_low)
+    base_result = calculate_scenario(rev_base)
+    high_result = calculate_scenario(rev_high)
     
+    # Unlevered IRR (base case, no debt)
     try:
-        unlev = npf.irr([-total_capex] + [base[i] * 1000 - opex * 1000 for i in range(n)]) * 100
-        if np.isnan(unlev): unlev = 0
-    except: unlev = 0
+        unlevered_ncf = [rev_base[i] * 1000 - OPEX * 1000 for i in range(PROJECT_LIFE)]
+        unlev_irr = npf.irr([-total_capex] + unlevered_ncf) * 100
+        if np.isnan(unlev_irr):
+            unlev_irr = 0.0
+    except:
+        unlev_irr = 0.0
+    
+    # Debt feasibility: test DSCR against covenant in LOW case (stress test)
+    debt_feasible = low_result['min_dscr'] >= dscr_target
     
     return {
-        'feasible': low_r['min_dscr'] >= dscr_target,
+        # Structure
         'gearing': gearing,
+        'debt': debt / 1000,  # €k/MW
+        'equity': equity / 1000,  # €k/MW
         'dscr_target': dscr_target,
-        'debt': debt / 1000,
-        'equity': equity / 1000,
-        'unlev_irr': unlev,
-        'low': low_r,
-        'base': base_r,
-        'high': high_r,
+        'margin_bps': margin_bps,
+        'all_in_rate': all_in_rate * 100,  # %
+        
+        # Results
+        'debt_feasible': debt_feasible,
+        'unlev_irr': unlev_irr,
+        
+        # Scenarios
+        'low': low_result,
+        'base': base_result,
+        'high': high_result,
     }
 
-def find_min_coverage(capex, opex, toll_level, cod):
+
+def find_minimum_viable_coverage(toll_price: float) -> int | None:
+    """Find minimum toll coverage % that passes debt feasibility"""
     for t in range(0, 101):
-        r = calculate(capex, opex, t, toll_level, cod)
-        if r and r['feasible']:
+        result = calculate_project(t, toll_price)
+        if result['debt_feasible']:
             return t
     return None
 
-# ============================================================================
-# SESSION STATE
-# ============================================================================
-if 'toll_slider' not in st.session_state:
-    st.session_state.toll_slider = 80
-if 'capex' not in st.session_state:
-    st.session_state.capex = 600
-if 'opex' not in st.session_state:
-    st.session_state.opex = 7
 
 # ============================================================================
 # HEADER
 # ============================================================================
-st.markdown('<div class="header-row"><div class="main-title">Battery Toll Calculator</div><div class="brand-text">Modo Energy</div></div>', unsafe_allow_html=True)
+st.markdown('''
+<div class="header-row">
+    <div class="main-title">Battery Toll Calculator</div>
+    <div class="brand-text">Modo Energy</div>
+</div>
+''', unsafe_allow_html=True)
+
+# ============================================================================
+# INPUTS (captured first to avoid execution order bugs)
+# ============================================================================
+toll_price = st.session_state.get('toll_price', 120)
+toll_pct = st.session_state.get('toll_pct', 80)
 
 # ============================================================================
 # LAYOUT
@@ -263,15 +363,22 @@ left, right = st.columns([1, 1.1], gap="large")
 with left:
     st.markdown('<div class="section-label">Structure</div>', unsafe_allow_html=True)
     
-    # Toll price (no button)
-    toll_price = st.number_input("Toll Price (€k/MW/yr)", min_value=80, max_value=140, value=120, step=5)
+    # Toll price input
+    toll_price = st.number_input(
+        "Toll Price (€k/MW/yr)", 
+        min_value=80, 
+        max_value=140, 
+        value=120, 
+        step=5,
+        key="toll_price"
+    )
     
-    # Coverage slider with min viable right-aligned
-    min_cov = find_min_coverage(st.session_state.capex, st.session_state.opex, toll_price, 2027)
+    # Find minimum viable coverage
+    min_cov = find_minimum_viable_coverage(toll_price)
     if min_cov is not None:
         min_text = f'Min viable: <strong>{min_cov}%</strong>'
     else:
-        min_text = '<span style="color: #ef4444;">Not viable</span>'
+        min_text = '<span style="color: #ef4444;">Not viable at any coverage</span>'
     
     st.markdown(f'''
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;">
@@ -280,11 +387,20 @@ with left:
     </div>
     ''', unsafe_allow_html=True)
     
-    toll_pct = st.slider("Toll Coverage %", 0, 100, key="toll_slider", label_visibility="collapsed")
+    toll_pct = st.slider(
+        "Toll Coverage %", 
+        0, 100, 
+        value=80,
+        key="toll_pct",
+        label_visibility="collapsed"
+    )
+    
+    # Calculate results AFTER inputs are captured
+    result = calculate_project(toll_pct, toll_price)
     
     # Gearing bar
-    gearing = get_gearing(toll_pct)
-    bar_pct = (gearing - 45) / 35 * 100  # Scale 45-80% to 0-100%
+    gearing = result['gearing']
+    bar_pct = (gearing - 45) / 35 * 100  # Scale 45-80% to 0-100% bar width
     
     st.markdown(f'''
     <div class="gearing-row">
@@ -297,26 +413,20 @@ with left:
     </div>
     ''', unsafe_allow_html=True)
     
-    # Debt/Equity under gearing
-    result = calculate(st.session_state.capex, st.session_state.opex, toll_pct, toll_price, 2027)
-    if result:
-        st.markdown(f'''
-        <div class="capital-row">
-            <span>€{result['debt']:.0f}k debt</span>
-            <span>€{result['equity']:.0f}k equity</span>
-        </div>
-        ''', unsafe_allow_html=True)
+    # Debt/Equity breakdown
+    st.markdown(f'''
+    <div class="capital-row">
+        <span>€{result['debt']:.0f}k debt</span>
+        <span>€{result['equity']:.0f}k equity</span>
+    </div>
+    ''', unsafe_allow_html=True)
     
     # Terms row
-    dscr_target = get_dscr(toll_pct)
-    margin = get_margin(toll_pct)
-    rate = EURIBOR + margin / 100
-    
     st.markdown(f'''
     <div class="terms-row">
-        <span class="term-chip"><strong>{dscr_target:.2f}x</strong> DSCR</span>
-        <span class="term-chip"><strong>{rate:.1f}%</strong> rate</span>
-        <span class="term-chip"><strong>7yr</strong> tenor</span>
+        <span class="term-chip"><strong>{result['dscr_target']:.2f}x</strong> DSCR</span>
+        <span class="term-chip"><strong>{result['all_in_rate']:.1f}%</strong> rate</span>
+        <span class="term-chip"><strong>{TENOR}yr</strong> tenor</span>
     </div>
     ''', unsafe_allow_html=True)
 
@@ -326,81 +436,150 @@ with left:
 with right:
     st.markdown('<div class="section-label">Results</div>', unsafe_allow_html=True)
     
-    if result:
-        hurdle = get_hurdle(toll_pct)
-        base_irr = result['base']['irr']
-        low_irr = result['low']['irr']
-        high_irr = result['high']['irr']
-        min_dscr = result['low']['min_dscr']
-        dscr_target = result['dscr_target']
-        
-        # DEBT card
-        dscr_margin = min_dscr - dscr_target
-        debt_class = "pass" if result['feasible'] else "fail"
-        debt_badge = "FEASIBLE" if result['feasible'] else "NOT FEASIBLE"
-        dscr_sign = "+" if dscr_margin >= 0 else ""
-        
-        st.markdown(f'''
-        <div class="result-card {debt_class}">
-            <div class="result-header">
-                <div>
-                    <div class="result-label">Debt</div>
-                    <div class="result-value">{min_dscr:.2f}x</div>
-                    <div class="result-detail">vs {dscr_target:.2f}x DSCR target ({dscr_sign}{dscr_margin:.2f}x)</div>
-                </div>
-                <div class="result-badge">{debt_badge}</div>
-            </div>
-        </div>
-        <div style="font-size: 0.6rem; color: #64748b; margin-top: -0.3rem; margin-bottom: 0.5rem;">DSCR tested against Modo low case forecast</div>
-        ''', unsafe_allow_html=True)
-        
-        # EQUITY card
-        irr_delta = base_irr - hurdle
-        if irr_delta >= 0:
-            eq_class, eq_badge = "pass", "MEETS HURDLE"
-        elif irr_delta >= -3:
-            eq_class, eq_badge = "warn", "NEAR HURDLE"
-        else:
-            eq_class, eq_badge = "fail", "BELOW HURDLE"
-        
-        sign = "+" if irr_delta >= 0 else ""
-        st.markdown(f'''
-        <div class="result-card {eq_class}">
-            <div class="result-header">
-                <div>
-                    <div class="result-label">Equity IRR</div>
-                    <div class="result-value">{base_irr:.1f}%</div>
-                    <div class="result-detail">vs {hurdle:.0f}% hurdle ({sign}{irr_delta:.1f}%)</div>
-                </div>
-                <div class="result-badge">{eq_badge}</div>
-            </div>
-            <div class="result-scenarios">
-                {low_irr:.1f}% low case · {high_irr:.1f}% high case
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
-        
-        # Unlevered text
-        st.markdown(f'''
-        <div class="unlev-text">
-            <strong>{result['unlev_irr']:.1f}%</strong> unlevered project IRR
-        </div>
-        ''', unsafe_allow_html=True)
+    hurdle = get_equity_hurdle(toll_pct)
+    base_irr = result['base']['irr']
+    low_irr = result['low']['irr']
+    high_irr = result['high']['irr']
+    min_dscr = result['low']['min_dscr']
+    dscr_target = result['dscr_target']
     
-    # Project inputs - plain
-    st.markdown('<div class="project-inputs">', unsafe_allow_html=True)
+    # DEBT card
+    dscr_margin = min_dscr - dscr_target
+    debt_class = "pass" if result['debt_feasible'] else "fail"
+    debt_badge = "FEASIBLE" if result['debt_feasible'] else "NOT FEASIBLE"
+    dscr_sign = "+" if dscr_margin >= 0 else ""
     
-    pc1, pc2 = st.columns([1, 1])
-    with pc1:
-        capex = st.number_input("CapEx (€k)", 300, 1000, st.session_state.capex, 25, key="capex_input")
-        st.session_state.capex = capex
-    with pc2:
-        opex = st.number_input("OpEx (€k/yr)", 0, 30, st.session_state.opex, 1, key="opex_input")
-        st.session_state.opex = opex
+    st.markdown(f'''
+    <div class="result-card {debt_class}">
+        <div class="result-header">
+            <div>
+                <div class="result-label">Debt</div>
+                <div class="result-value">{min_dscr:.2f}x</div>
+                <div class="result-detail">vs {dscr_target:.2f}x DSCR target ({dscr_sign}{dscr_margin:.2f}x)</div>
+            </div>
+            <div class="result-badge">{debt_badge}</div>
+        </div>
+    </div>
+    <div style="font-size: 0.6rem; color: #64748b; margin-top: -0.3rem; margin-bottom: 0.5rem;">
+        DSCR tested against Modo low case forecast
+    </div>
+    ''', unsafe_allow_html=True)
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    # EQUITY card
+    irr_delta = base_irr - hurdle
+    if irr_delta >= 0:
+        eq_class, eq_badge = "pass", "MEETS HURDLE"
+    elif irr_delta >= -3:
+        eq_class, eq_badge = "warn", "NEAR HURDLE"
+    else:
+        eq_class, eq_badge = "fail", "BELOW HURDLE"
+    
+    sign = "+" if irr_delta >= 0 else ""
+    st.markdown(f'''
+    <div class="result-card {eq_class}">
+        <div class="result-header">
+            <div>
+                <div class="result-label">Equity IRR</div>
+                <div class="result-value">{base_irr:.1f}%</div>
+                <div class="result-detail">vs {hurdle:.0f}% hurdle ({sign}{irr_delta:.1f}%)</div>
+            </div>
+            <div class="result-badge">{eq_badge}</div>
+        </div>
+        <div class="result-scenarios">
+            {low_irr:.1f}% low case · {high_irr:.1f}% high case
+        </div>
+    </div>
+    ''', unsafe_allow_html=True)
+    
+    # Unlevered IRR
+    st.markdown(f'''
+    <div class="unlev-text">
+        <strong>{result['unlev_irr']:.1f}%</strong> unlevered project IRR
+    </div>
+    ''', unsafe_allow_html=True)
+
+# ============================================================================
+# METHODOLOGY DROPDOWN
+# ============================================================================
+with st.expander("📊 Methodology & Assumptions"):
+    st.markdown(f"""
+    ### Project Assumptions
+    
+    | Parameter | Value |
+    |-----------|-------|
+    | CapEx (inc. BKZ) | €{CAPEX}k/MW |
+    | OpEx | €{OPEX}k/MW/yr |
+    | Duration | {DURATION}hr |
+    | Cycling | {CYCLES} cycles/day |
+    | Degradation | {DEGRADATION*100:.1f}%/yr |
+    | Project life | {PROJECT_LIFE} years |
+    | COD | {COD} |
+    
+    ---
+    
+    ### Revenue Model
+    
+    **Tolled revenue** (contracted portion):
+    - Fixed at the toll price (€k/MW/yr) × toll coverage %
+    - Not degraded over time
+    
+    **Merchant revenue** (uncontracted portion):
+    - Modo Energy German BESS merchant forecasts
+    - Degraded at {DEGRADATION*100:.1f}% per year
+    - Three scenarios: low, base, high
+    
+    **Total revenue** = (Toll price × Toll %) + (Merchant forecast × (1 - Toll %) × Degradation factor)
+    
+    ---
+    
+    ### Debt Sizing
+    
+    **Gearing** scales with contracted revenue (lower merchant risk = higher leverage):
+    - 0% toll coverage → 45% gearing
+    - 100% toll coverage → 80% gearing
+    
+    **DSCR covenant** tested against **Modo low case** (stress test):
+    - 0% toll coverage → 2.00× minimum DSCR required
+    - 100% toll coverage → 1.20× minimum DSCR required
+    
+    **Debt service**: 7-year fully amortizing loan at EURIBOR ({EURIBOR}%) + margin (200-280 bps depending on toll coverage)
+    
+    ---
+    
+    ### Equity Returns
+    
+    **Equity IRR** calculated over {PROJECT_LIFE}-year project life:
+    - Initial outflow: Equity = CapEx × (1 - Gearing)
+    - Annual inflows: Revenue - OpEx - Debt Service
+    
+    **Hurdle rates** reflect risk profile:
+    - 80-100% toll → 10% (quasi-infrastructure)
+    - 50-79% toll → 12% (hybrid)
+    - 20-49% toll → 14% (significant merchant)
+    - 0-19% toll → 16% (merchant)
+    
+    **Unlevered IRR**: Project returns without debt, using base case revenue
+    
+    ---
+    
+    ### Glossary
+    
+    **IRR (Internal Rate of Return)**: The annualised return on equity capital over the project life. A 15% IRR means equity investors earn 15% per year on their investment.
+    
+    **DSCR (Debt Service Coverage Ratio)**: Net operating cash flow ÷ debt service. A 1.50× DSCR means the project generates 50% more cash than needed to pay debt obligations. Lenders require minimum DSCR covenants as a buffer against underperformance.
+    
+    **Gearing**: Debt ÷ Total CapEx. Higher gearing means more leverage, which amplifies equity returns but increases risk.
+    
+    ---
+    
+    *Model for educational purposes. Contact Modo Energy for detailed project analysis.*
+    """)
 
 # ============================================================================
 # FOOTER
 # ============================================================================
-st.markdown('<div class="footer">2hr · 1.5 cycle · 7yr tenor · 2.5% degradation · COD 2027 · Modo forecasts · Educational only</div>', unsafe_allow_html=True)
+st.markdown(f'''
+<div class="footer">
+    {DURATION}hr · {CYCLES} cycle · {TENOR}yr tenor · {DEGRADATION*100:.1f}% degradation · COD {COD} · Modo forecasts · Educational only
+</div>
+''', unsafe_allow_html=True)
