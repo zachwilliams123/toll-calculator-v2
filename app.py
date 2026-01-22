@@ -154,7 +154,7 @@ with left_col:
     toll_price = st.number_input("price", 80, 140, 120, 5, label_visibility="collapsed")
     
     # Toll coverage
-    st.markdown('<div class="input-label">Toll Coverage %</div>', unsafe_allow_html=True)
+    st.markdown('<div class="input-label">Toll %</div>', unsafe_allow_html=True)
     toll_pct = st.slider("toll", 0, 100, 80, label_visibility="collapsed")
     
     # Calculate auto gearing based on current toll
