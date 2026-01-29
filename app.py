@@ -213,7 +213,7 @@ left_col, right_col = st.columns([1, 1.1], gap="large")
 with left_col:
     # Toll price
     st.markdown('<div class="input-label">Toll Price (€k/MW/yr)</div>', unsafe_allow_html=True)
-    toll_price = st.number_input("price", 80, 140, 120, 5, label_visibility="collapsed")
+    toll_price = st.number_input("price", 80, 140, 105, 5, label_visibility="collapsed")
     
     # Toll coverage
     st.markdown('<div class="input-label">Revenue under toll (%)</div>', unsafe_allow_html=True)
