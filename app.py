@@ -1,6 +1,6 @@
 """
-Battery Toll Calculator v23
-Standard/Custom finance structure modes
+Battery Toll Calculator v25
+Lisa McDermott structure: 14yr sizing, 7yr mini-perm, 40% balloon target
 """
 
 import streamlit as st
@@ -9,11 +9,21 @@ import numpy_financial as npf
 
 st.set_page_config(page_title="Battery Toll Calculator | Modo Energy", layout="centered", initial_sidebar_state="collapsed")
 
-CAPEX, OPEX, EURIBOR, TOLL_TENOR, PROJECT_LIFE = 625, 10, 2.25, 7, 10
+# Core parameters (Lisa's structure)
+CAPEX = 690          # €k/MW
+OPEX = 10            # €k/MW/yr
+EURIBOR = 2.25       # %
+TOLL_TENOR = 7       # years
+SIZING_TENOR = 14    # years (15yr warranty - 1yr buffer)
+LOAN_TENOR = 7       # years (mini-perm maturity)
+PROJECT_LIFE = 15    # years
+TARGET_BALLOON = 40  # % ("don't want more than 40% balloon")
+
+# Revenue data from Modo forecasts (€k/MW/year) - COD 2027
 REVENUE_DATA = {
-    'low':  [94, 76, 72, 69, 68, 68, 70, 67, 67, 69],
-    'base': [155, 129, 124, 119, 117, 118, 118, 117, 114, 115],
-    'high': [205, 168, 163, 158, 154, 157, 155, 151, 154, 154],
+    'p99': [99, 83, 78, 74, 74, 74, 76, 75, 71, 73, 77, 80, 84, 84, 84],
+    'p50': [155, 129, 123, 119, 117, 118, 118, 117, 114, 115, 119, 119, 118, 114, 114],
+    'p1':  [211, 175, 169, 164, 161, 162, 161, 159, 158, 158, 161, 158, 152, 144, 144],
 }
 
 st.markdown("""
@@ -26,7 +36,6 @@ st.markdown("""
     .block-container {padding: 1rem 1.5rem !important; max-width: 900px !important;}
     
     .disclaimer {font-size: 11px; color: #64748b; text-align: center; padding: 8px 12px; background: #f8fafc; border-radius: 6px; margin-bottom: 12px; border: 1px solid #e2e8f0;}
-    .disclaimer a {color: #3b82f6; text-decoration: none;}
     
     .header-row {display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #e2e8f0;}
     .main-title {font-size: 22px; font-weight: 700; color: #1a1a2e;}
@@ -34,10 +43,10 @@ st.markdown("""
     
     .input-label {font-size: 13px; color: #475569; margin-bottom: 6px;}
     
-    .capital-row {font-size: 12px; color: #64748b; margin: 4px 0 12px 0;}
+    .capital-row {font-size: 12px; color: #64748b; margin: 4px 0 8px 0;}
     
-    .terms-row {display: flex; gap: 12px; padding-top: 10px; border-top: 1px solid #f1f5f9; margin-top: 8px;}
-    .term-chip {font-size: 12px; color: #475569;}
+    .terms-row {display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; border-top: 1px solid #f1f5f9; margin-top: 8px;}
+    .term-chip {font-size: 11px; color: #475569; background: #f8fafc; padding: 4px 8px; border-radius: 4px;}
     .term-chip strong {color: #1e293b;}
     
     .result-card {border-radius: 10px; padding: 14px 16px; color: white; margin-bottom: 8px;}
@@ -51,7 +60,6 @@ st.markdown("""
     .result-badge {font-size: 9px; font-weight: 600; padding: 4px 10px; border-radius: 4px; background: rgba(255,255,255,0.2);}
     .result-footer {font-size: 12px; opacity: 0.85; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);}
     
-    .dscr-note {font-size: 10px; color: #64748b; margin-bottom: 12px;}
     .footer {text-align: center; font-size: 10px; color: #94a3b8; margin-top: 12px; padding-top: 10px; border-top: 1px solid #f1f5f9;}
     
     div[data-testid="stNumberInput"] label {display: none !important;}
@@ -64,140 +72,195 @@ st.markdown("""
     div[data-testid="stSelectbox"] label {display: none !important;}
     div[data-testid="stSelectbox"] > div > div {font-size: 14px !important; background: #f8fafc !important; border: 1px solid #e2e8f0 !important; border-radius: 8px !important;}
     
-    /* Custom methodology section */
-    .method-section {
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        margin-top: 16px;
-        overflow: hidden;
-    }
-    .method-header {
-        padding: 12px 16px;
-        font-size: 13px;
-        font-weight: 500;
-        color: #475569;
-        cursor: pointer;
-        background: #fff;
-        border: none;
-        width: 100%;
-        text-align: left;
-    }
-    .method-header:hover {
-        background: #f8fafc;
-    }
-    .method-content {
-        padding: 0 16px 16px 16px;
-        font-size: 12px;
-        color: #475569;
-        line-height: 1.6;
-        border-top: 1px solid #f1f5f9;
-    }
-    .method-content strong {
-        color: #1e293b;
-    }
+    .method-section {border: 1px solid #e2e8f0; border-radius: 8px; margin-top: 16px; overflow: hidden;}
+    .method-header {padding: 12px 16px; font-size: 13px; font-weight: 500; color: #475569; cursor: pointer; background: #fff; border: none; width: 100%; text-align: left;}
+    .method-header:hover {background: #f8fafc;}
+    .method-content {padding: 0 16px 16px 16px; font-size: 12px; color: #475569; line-height: 1.6; border-top: 1px solid #f1f5f9;}
+    .method-content strong {color: #1e293b;}
 </style>
 """, unsafe_allow_html=True)
 
-def get_auto_gearing(toll_pct): return 45 + toll_pct * 0.35
-def get_dscr_target(toll_pct): return 2.00 - toll_pct * 0.008
-def get_margin_bps(toll_pct): return 280 - toll_pct * 0.80
+def get_dscr_target(toll_pct): 
+    return 1.80 - toll_pct * 0.005
+
+def get_margin_bps(toll_pct): 
+    return 280 - toll_pct * 0.80
 
 def calculate_project(toll_pct, toll_price, gearing):
-    dscr_target, margin_bps = get_dscr_target(toll_pct), get_margin_bps(toll_pct)
+    """
+    Calculate project financials with Lisa's mini-perm structure.
+    
+    Structure:
+    - 14yr sizing tenor (15yr warranty - 1yr buffer)
+    - 7yr loan maturity (mini-perm)
+    - 40% balloon at year 7, refinanced over years 8-14
+    """
+    dscr_target = get_dscr_target(toll_pct)
+    margin_bps = get_margin_bps(toll_pct)
     all_in_rate = (EURIBOR + margin_bps / 100) / 100
-    debt, equity = CAPEX * 10 * gearing, CAPEX * 1000 - CAPEX * 10 * gearing
+    
+    # Capital structure (€ per MW)
+    debt = CAPEX * gearing / 100 * 1000
+    equity = CAPEX * 1000 - debt
+    
     toll_fraction = toll_pct / 100
     
-    def build_revenue(f):
-        return [toll_price * toll_fraction + f[i] * (1 - toll_fraction) if i < TOLL_TENOR else f[i] for i in range(PROJECT_LIFE)]
+    # Balloon mechanics
+    balloon_at_7 = debt * TARGET_BALLOON / 100
+    principal_paid_1_7 = debt - balloon_at_7  # 60% of debt
+    principal_per_year_1_7 = principal_paid_1_7 / LOAN_TENOR
     
-    r, n = all_in_rate, TOLL_TENOR
-    annual_ds = debt * (r * (1+r)**n) / ((1+r)**n - 1) if debt > 0 else 0
+
     
-    def calc(f):
-        net = [build_revenue(f)[i] * 1000 - OPEX * 1000 for i in range(PROJECT_LIFE)]
-        ecf = [net[i] - (annual_ds if i < TOLL_TENOR else 0) for i in range(PROJECT_LIFE)]
-        dscr = min([net[i]/annual_ds for i in range(TOLL_TENOR)]) if annual_ds > 0 else 99
+    # Years 8-14: amortize remaining 40% over 7 years
+    principal_per_year_8_14 = balloon_at_7 / (SIZING_TENOR - LOAN_TENOR)
+    
+    def build_debt_service():
+        """Build debt service schedule with sweep to 40% balloon."""
+        if debt <= 0:
+            return [0] * PROJECT_LIFE
+        
+        debt_service = []
+        outstanding = debt
+        
+        # Years 1-7: accelerated principal (sweep) + interest
+        for i in range(LOAN_TENOR):
+            interest = outstanding * all_in_rate
+            ds = principal_per_year_1_7 + interest
+            debt_service.append(ds)
+            outstanding -= principal_per_year_1_7
+        
+        # Years 8-14: balloon amortization + interest
+        for i in range(SIZING_TENOR - LOAN_TENOR):
+            interest = outstanding * all_in_rate
+            ds = principal_per_year_8_14 + interest
+            debt_service.append(ds)
+            outstanding -= principal_per_year_8_14
+        
+        # Year 15: no debt
+        debt_service.append(0)
+        
+        return debt_service
+    
+    def build_revenue(forecast):
+        """Build annual revenue mixing toll and merchant."""
+        revenue = []
+        for i in range(PROJECT_LIFE):
+            if i < TOLL_TENOR:
+                rev = toll_price * toll_fraction + forecast[i] * (1 - toll_fraction)
+            else:
+                rev = forecast[i]
+            revenue.append(rev * 1000)
+        return revenue
+    
+    debt_service = build_debt_service()
+    
+    def calc_scenario(forecast):
+        """Calculate DSCR and IRR for a given revenue scenario."""
+        revenue = build_revenue(forecast)
+        net_op = [revenue[i] - OPEX * 1000 for i in range(PROJECT_LIFE)]
+        
+        # DSCRs for sizing period
+        dscrs = []
+        for i in range(SIZING_TENOR):
+            if debt_service[i] > 0:
+                dscrs.append(net_op[i] / debt_service[i])
+            else:
+                dscrs.append(99)
+        
+        min_dscr = min(dscrs) if dscrs else 99
+        min_dscr_year = dscrs.index(min_dscr) + 1 if dscrs else 0
+        
+        # Equity cash flows
+        equity_cf = [net_op[i] - debt_service[i] for i in range(PROJECT_LIFE)]
+        
         try:
-            irr = npf.irr([-equity] + ecf) * 100
-            irr = irr if not np.isnan(irr) and -50 < irr < 200 else -99
-        except: irr = -99
-        return {'irr': irr, 'min_dscr': dscr}
+            irr = npf.irr([-equity] + equity_cf) * 100
+            if np.isnan(irr) or irr < -50 or irr > 200:
+                irr = -99
+        except:
+            irr = -99
+        
+        return {
+            'irr': irr,
+            'min_dscr': min_dscr,
+            'min_dscr_year': min_dscr_year,
+        }
     
-    low, base, high = calc(REVENUE_DATA['low']), calc(REVENUE_DATA['base']), calc(REVENUE_DATA['high'])
+    low = calc_scenario(REVENUE_DATA['p99'])
+    base = calc_scenario(REVENUE_DATA['p50'])
+    high = calc_scenario(REVENUE_DATA['p1'])
+    
     return {
-        'dscr_target': dscr_target, 'all_in_rate': all_in_rate * 100,
-        'debt': debt / 1000, 'equity': equity / 1000,
+        'dscr_target': dscr_target,
+        'all_in_rate': all_in_rate * 100,
+        'debt': debt / 1000,
+        'equity': equity / 1000,
         'debt_feasible': low['min_dscr'] >= dscr_target,
-        'low': low, 'base': base, 'high': high,
+        'low': low,
+        'base': base,
+        'high': high,
     }
 
-# Session state
-if 'custom_gearing' not in st.session_state:
-    st.session_state.custom_gearing = 70
-if 'show_method' not in st.session_state:
-    st.session_state.show_method = False
 
 # Disclaimer & Header
-st.markdown('<div class="disclaimer">For educational purposes only </div>', unsafe_allow_html=True)
+st.markdown('<div class="disclaimer">For educational purposes only</div>', unsafe_allow_html=True)
 st.markdown('<div class="header-row"><div class="main-title">Battery Toll Calculator</div><div class="brand-text">Modo Energy</div></div>', unsafe_allow_html=True)
+st.markdown('<p style="font-size: 13px; color: #64748b; margin-top: -12px; margin-bottom: 16px;">Explore how toll agreements enable higher leverage. Try setting 0% toll at 70% gearing, then increase toll % to see when it becomes feasible.</p>', unsafe_allow_html=True)
 
 left_col, right_col = st.columns([1, 1.1], gap="large")
 
 with left_col:
-    # Finance structure dropdown
-    st.markdown('<div class="input-label">Finance structure</div>', unsafe_allow_html=True)
-    mode = st.selectbox("mode", ["Standard", "Custom"], label_visibility="collapsed")
-    
     # Toll price
     st.markdown('<div class="input-label">Toll Price (€k/MW/yr)</div>', unsafe_allow_html=True)
     toll_price = st.number_input("price", 80, 140, 120, 5, label_visibility="collapsed")
     
     # Toll coverage
-    st.markdown('<div class="input-label">Toll %</div>', unsafe_allow_html=True)
+    st.markdown('<div class="input-label">Revenue under toll (%)</div>', unsafe_allow_html=True)
     toll_pct = st.slider("toll", 0, 100, 80, label_visibility="collapsed")
-    
-    # Calculate auto gearing based on current toll
-    auto_gearing = int(round(get_auto_gearing(toll_pct)))
     
     # Gearing
     st.markdown('<div class="input-label">Gearing %</div>', unsafe_allow_html=True)
-    
-    if mode == "Standard":
-        # Use key that changes with auto_gearing to force re-render
-        gearing = st.slider("gearing", 30, 85, auto_gearing, disabled=True, label_visibility="collapsed", key=f"gearing_std_{auto_gearing}")
-        gearing = auto_gearing  # Ensure we use auto value
-    else:
-        gearing = st.slider("gearing", 30, 85, st.session_state.custom_gearing, label_visibility="collapsed", key="gearing_custom")
-        st.session_state.custom_gearing = gearing
+    gearing = st.slider("gearing", 30, 85, 70, label_visibility="collapsed")
     
     result = calculate_project(toll_pct, toll_price, gearing)
     
-    st.markdown(f'<div class="capital-row">€{result["debt"]:.0f}k debt / €{result["equity"]:.0f}k equity</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="terms-row"><span class="term-chip"><strong>{result["dscr_target"]:.2f}×</strong> DSCR</span><span class="term-chip"><strong>{result["all_in_rate"]:.1f}%</strong> rate</span><span class="term-chip"><strong>7yr</strong> tenor</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="capital-row">€{result["debt"]:.0f}k debt / €{result["equity"]:.0f}k equity per MW</div>', unsafe_allow_html=True)
+    
+    st.markdown(f'''
+    <div class="terms-row">
+        <span class="term-chip"><strong>{result["dscr_target"]:.2f}×</strong> DSCR target</span>
+        <span class="term-chip"><strong>{result["all_in_rate"]:.1f}%</strong> rate</span>
+    </div>
+    ''', unsafe_allow_html=True)
 
 with right_col:
     hurdle = 10
-    low_irr, base_irr, high_irr = result['low']['irr'], result['base']['irr'], result['high']['irr']
-    min_dscr, dscr_target = result['low']['min_dscr'], result['dscr_target']
+    low_irr = result['low']['irr']
+    base_irr = result['base']['irr']
+    high_irr = result['high']['irr']
+    min_dscr = result['low']['min_dscr']
+    min_dscr_year = result['low']['min_dscr_year']
+    dscr_target = result['dscr_target']
     
     # Debt card
     debt_class = "pass" if result['debt_feasible'] else "fail"
     debt_badge = "FEASIBLE" if result['debt_feasible'] else "NOT FEASIBLE"
     dscr_margin = min_dscr - dscr_target
     
+    period_label = "toll" if min_dscr_year <= TOLL_TENOR else "merchant"
+    
     st.markdown(f'''
     <div class="result-card {debt_class}">
         <div class="result-header">
             <div>
-                <div class="result-label">Debt</div>
+                <div class="result-label">Min DSCR (yr {min_dscr_year}, {period_label})</div>
                 <div class="result-value">{min_dscr:.2f}×</div>
                 <div class="result-detail">vs {dscr_target:.2f}× target ({"+" if dscr_margin >= 0 else ""}{dscr_margin:.2f}×)</div>
             </div>
             <div class="result-badge">{debt_badge}</div>
         </div>
     </div>
-    <div class="dscr-note">DSCR tested against Modo low case</div>
     ''', unsafe_allow_html=True)
     
     # Equity card
@@ -208,42 +271,52 @@ with right_col:
     <div class="result-card {eq_class}">
         <div class="result-header">
             <div>
-                <div class="result-label">Equity IRR (10yr)</div>
+                <div class="result-label">Equity IRR (15yr)</div>
                 <div class="result-value">{base_irr:.1f}%</div>
                 <div class="result-detail">vs {hurdle}% hurdle</div>
             </div>
             <div class="result-badge">{eq_badge}</div>
         </div>
-        <div class="result-footer">Range: {low_irr:.0f}% – {high_irr:.0f}%</div>
+        <div class="result-footer">Range: {low_irr:.0f}% - {high_irr:.0f}% (low - high)</div>
     </div>
     ''', unsafe_allow_html=True)
 
-# Methodology section using HTML details/summary (no arrow by default in our styling)
+# Methodology section
 st.markdown('''
 <details class="method-section">
-<summary class="method-header">Methodology & Assumptions</summary>
+<summary class="method-header">Methodology</summary>
 <div class="method-content">
 
-<p><strong>Revenue</strong><br>
-Years 1–7: (Toll price × Toll %) + (Modo merchant forecast × (1 − Toll %))<br>
-Years 8–10: 100% merchant (toll expired, debt repaid)</p>
+<p><strong>How debt works</strong><br>
+Lenders size debt based on the project's ability to service interest and principal from operating cash flow. The key metric is the debt service coverage ratio (DSCR): how many times over can the project pay its annual debt obligations?</p>
 
-<p><strong>Debt</strong><br>
-7-year amortising loan at EURIBOR + 200–280 bps. DSCR covenant tested against Modo low case: 2.0× at 0% toll → 1.2× at 100% toll.</p>
+<p>DSCR = (Revenue - OpEx) / Debt Service</p>
 
-<p><strong>Equity</strong><br>
-IRR calculated over 10 years (includes 3-year merchant tail post-toll). Range shows Modo low/high revenue scenarios. Hurdle rate: 10%.</p>
+<p>Higher toll coverage means more predictable revenue, so lenders accept a lower DSCR cushion. A fully merchant project needs 1.8× coverage; a fully tolled project might only need 1.3×. Lower coverage requirements mean more debt for the same cash flow.</p>
 
-<p><strong>Glossary</strong><br>
-<strong>IRR</strong> — Internal Rate of Return. Annualised return on equity.<br>
-<strong>DSCR</strong> — Debt Service Coverage Ratio. Operating cash flow ÷ debt payments.<br>
-<strong>Gearing</strong> — Debt as % of total capital.</p>
+<p><strong>Why toll enables leverage</strong><br>
+Toll does not create higher returns directly. It compresses the revenue distribution. But that stability lets lenders extend more debt. Higher debt means less equity required, and the same project profit spread across less equity means higher equity returns.</p>
+
+<p><strong>Debt structure</strong><br>
+Debt is sized assuming a 14-year repayment period (matching typical battery warranties). 60% of principal is repaid in years 1-7, leaving a 40% balloon at year 7 which gets refinanced and amortized over years 8-14. Interest is calculated on the outstanding balance each year at the all-in rate (EURIBOR + margin).</p>
+
+<p><strong>Revenue calculation</strong><br>
+During the toll period (years 1-7), revenue blends toll and merchant:<br>
+Revenue = (Toll price × Toll %) + (Forecast × (1 - Toll %))</p>
+
+<p>After the toll expires (years 8-15), revenue is 100% merchant. The calculator tests three scenarios from Modo's German market forecasts: low, base, and high cases.</p>
+
+<p><strong>What "not feasible" means</strong><br>
+If the DSCR falls below target in any year of the 14-year sizing period, lenders will not offer that structure. You would need to reduce gearing until it passes, which is exactly why merchant projects cannot achieve the same leverage as tolled ones.</p>
+
+<p><strong>Simplifications</strong><br>
+This model treats all values as nominal with no inflation escalation. Real toll contracts typically include partial CPI indexation (50-100%), and OpEx would grow over time. These effects partially offset. CapEx is stated in real 2024 prices.</p>
 
 <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 12px 0;">
-<span style="font-size: 10px; color: #94a3b8;">€625k/MW CapEx (inc. BKZ) · €10k/MW/yr OpEx · 2hr · 1.5 cycles/day · COD 2027</span>
+<span style="font-size: 10px; color: #94a3b8;">€625k/MW CapEx (real 2024) · €10k/MW OpEx · 2hr duration · 7yr toll · 15yr project life · COD 2027</span>
 
 </div>
 </details>
 ''', unsafe_allow_html=True)
 
-st.markdown('<div class="footer">2hr · 1.5 cycle · 7yr toll/debt · 10yr equity IRR · COD 2027 · Modo forecasts</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">2hr duration · 7yr toll tenor · 15yr project life · COD 2027</div>', unsafe_allow_html=True)
